@@ -1,0 +1,11 @@
+__pycache__/
+.venv
+.env
+.editorconfig
+.DS_Store
+.mypy_cache
+output/*
+.rsync-ignore
+node_modules/
+tmp
+.github-mcp-server.env

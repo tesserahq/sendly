@@ -1,0 +1,73 @@
+name: Python checks
+on:
+  # Trigger the workflow on push to the main branch
+  push:
+    branches:
+      - main
+  # Trigger the workflow on pull request to the main branch
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sendly_test
+        image: postgres:17
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/sendly_test
+      CREDENTIAL_MASTER_KEY: "RrAy78H8PevHw9EJ3a0OZgrHp8RABeXRQQGajzO5NQc="
+      ENV: test
+      ROLLBAR_ACCESS_TOKEN: 7cd9dd0b5df9462b8ebdfb522af61cd2
+    steps:
+      - uses: actions/checkout@v3
+      - name: Wait for DB to be ready
+        run: |
+          for i in {1..5}; do
+            if pg_isready -h 127.0.0.1 -p 5432; then
+              echo "Database is ready"
+              exit 0
+            fi
+            echo "Waiting for DB..."
+            sleep 2
+          done
+      - name: Set up Python 3
+        uses: actions/setup-python@v3
+        with:
+          python-version: 3.12
+      - name: Install dependencies
+        run: |
+          pipx install poetry && poetry install
+      - name: Lint with ruff
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          poetry run ruff check --select=E9,F63,F7,F82
+          # exit-zero treats all errors as warnings.
+          poetry run ruff check --exit-zero
+      - name: Check formatting with black
+        uses: psf/black@stable
+        with:
+          src: ". tests/"
+          options: "--check --verbose"
+      - name: Run unit tests
+        run: |
+          poetry run pytest tests/

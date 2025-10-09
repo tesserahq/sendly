@@ -1,0 +1,22 @@
+---
+description: Use this rule when generating a backend service class for a SQLAlchemy model. It ensures consistent service structure, method naming, and database handling across the codebase. Apply this pattern whenever a new model-specific service needs to be created or updated in the services directory.
+globs: 
+alwaysApply: false
+---
+This rule defines how to generate service classes in the backend:
+
+In the services directory:
+* Always define services as <Model>Service classes
+* Accept a SQLAlchemy Session instance in the constructor
+* Include the following methods:
+* get_<model>(id: UUID) - fetch a single instance
+* get_<models>(skip=0, limit=100) - fetch a list with pagination
+* create_<model>(data: <Model>Create) - create a new instance using Pydantic schema
+* update_<model>(id: UUID, data: <Model>Update) - update fields using exclude_unset=True
+* delete_<model>(id: UUID) - delete the instance and return a boolean
+* search(filters: dict) - apply filters with apply_filters(query, Model, filters)
+* Use model names in lowercase for variable names and method prefixes
+* Use .model_dump() on Pydantic objects for instantiation
+* Always commit and refresh updated or created objects
+
+Reference: WorkspaceService in services/workspace.py

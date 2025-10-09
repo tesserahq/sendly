@@ -1,0 +1,43 @@
+---
+description: Use this rule when writing or modifying tests that require model instances. Fixtures should be the default strategy for preparing test data. Leverage faker for data variety and ensure consistent, reusable test setups across the codebase.
+globs: 
+alwaysApply: false
+---
+This rule standardizes the use of fixtures in tests:
+
+In the tests directory:
+
+* Always use existing fixtures when setting up model data
+* If the fixture doesn’t exist, create it in the relevant *_fixtures.py file with the following practices:
+* Name the fixture setup_<model> or setup_<context>_<model>
+* Use faker to generate realistic test data when possible
+* Example: name = faker.name(), description = faker.text(100)
+* Inject dependencies like setup_user or setup_another_user to populate foreign key fields
+* Add the model instance to the DB, then commit and refresh
+
+* Example fixture:
+
+```
+@pytest.fixture
+def setup_workspace(db, setup_user, faker):
+    workspace = Workspace(
+        name=faker.name(),
+        description=faker.text(100),
+        created_by_id=setup_user.id,
+    )
+    db.add(workspace)
+    db.commit()
+    db.refresh(workspace)
+    return workspace
+```
+* In test functions, always use fixtures like:
+```
+workspace = setup_workspace
+assert workspace.id is not None
+```
+
+* Prefer fixtures over inline setup for clarity and reuse
+* Add a clear docstring to each fixture describing its purpose
+* Run tests using ENV=test poetry run pytest
+
+Reference: setup_workspace in workspace_fixtures.py
