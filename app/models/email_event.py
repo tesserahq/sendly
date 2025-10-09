@@ -21,5 +21,7 @@ class EmailEvent(Base, TimestampMixin, SoftDeleteMixin):
     event_timestamp = Column(DateTime, nullable=False)
     details = Column(JSONB, nullable=False)
 
+    email = relationship("Email", back_populates="events")
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

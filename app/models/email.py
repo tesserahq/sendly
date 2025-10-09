@@ -28,6 +28,7 @@ class Email(Base, TimestampMixin, SoftDeleteMixin):
 
     tenant = relationship("Tenant", back_populates="emails")
     provider = relationship("Provider", back_populates="emails")
+    events = relationship("EmailEvent", back_populates="email")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
