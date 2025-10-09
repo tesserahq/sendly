@@ -8,9 +8,9 @@ import uuid
 from app.db import Base
 
 
-class Email(Base, TimestampMixin, SoftDeleteMixin):
-    """Email model for the application.
-    This model represents a provider in the system.
+class EmailEvent(Base, TimestampMixin, SoftDeleteMixin):
+    """EmailEvent model for the application.
+    This model represents an email event in the system.
     """
 
     __tablename__ = "email_events"

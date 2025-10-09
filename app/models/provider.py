@@ -19,6 +19,7 @@ class Provider(Base, TimestampMixin, SoftDeleteMixin):
     name = Column(String, unique=True, nullable=False)
 
     tenants = relationship("Tenant", back_populates="provider")
+    emails = relationship("Email", back_populates="provider")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

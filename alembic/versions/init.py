@@ -67,8 +67,109 @@ def upgrade() -> None:
         postgresql_where=sa.text("external_id IS NOT NULL"),
     )
 
+    # Create providers table
+    op.create_table(
+        "providers",
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column("name", sa.String, unique=True, nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
+        ),
+        sa.Column("deleted_at", sa.DateTime(), nullable=True),
+    )
+
+    # Create tenants table
+    op.create_table(
+        "tenants",
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column("name", sa.String, unique=True, nullable=False),
+        sa.Column("provider_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("provider_api_key", sa.String, nullable=False),
+        sa.Column("provider_metadata", postgresql.JSONB, nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
+        ),
+        sa.Column("deleted_at", sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(["provider_id"], ["providers.id"]),
+    )
+
+    # Create emails table
+    op.create_table(
+        "emails",
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column("from_email", sa.String, nullable=False),
+        sa.Column("to_email", sa.String, nullable=False),
+        sa.Column("subject", sa.String, nullable=False),
+        sa.Column("body", sa.String, nullable=False),
+        sa.Column("status", sa.String, nullable=False),
+        sa.Column("sent_at", sa.DateTime, nullable=True),
+        sa.Column("provider_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("error_message", sa.String, nullable=True),
+        sa.Column(
+            "created_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
+        ),
+        sa.Column("deleted_at", sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(["provider_id"], ["providers.id"]),
+        sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
+    )
+
+    # Create email_events table
+    op.create_table(
+        "email_events",
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column("email_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("event_type", sa.String, nullable=False),
+        sa.Column("event_timestamp", sa.DateTime, nullable=False),
+        sa.Column("details", postgresql.JSONB, nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
+        ),
+        sa.Column("deleted_at", sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(["email_id"], ["emails.id"]),
+    )
+
 
 def downgrade() -> None:
+    # Drop tables in reverse order
+    op.drop_table("email_events")
+    op.drop_table("emails")
+    op.drop_table("tenants")
+    op.drop_table("providers")
+
     # Drop the partial unique index
     op.drop_index("uq_users_external_id", table_name="users")
     op.drop_table("users")
+    op.drop_table("app_settings")
