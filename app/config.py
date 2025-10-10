@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     oidc_algorithms: str = "RS256"
     otel_exporter_otlp_endpoint: str = "http://localhost:4318"
     otel_service_name: str = "sendly"
+    fernet_key: Optional[str] = Field(
+        default=None, json_schema_extra={"env": "FERNET_KEY"}
+    )
+    fernet_salt: str = Field(
+        default="default-salt", json_schema_extra={"env": "FERNET_SALT"}
+    )
 
     redis_host: str = Field(
         default="localhost", json_schema_extra={"env": "REDIS_HOST"}

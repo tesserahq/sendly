@@ -1,3 +1,4 @@
+import datetime
 from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -72,6 +73,23 @@ class EmailService(SoftDeleteService[Email]):
             .offset(skip)
             .limit(limit)
             .all()
+        )
+
+    def get_emails_by_tenant_query(self, tenant_id: UUID):
+        """
+        Get a query for all emails for a specific tenant.
+        This is useful for pagination with fastapi-pagination.
+
+        Args:
+            tenant_id: The ID of the tenant
+
+        Returns:
+            Query: SQLAlchemy query object for emails of the tenant
+        """
+        return (
+            self.db.query(Email)
+            .filter(Email.tenant_id == tenant_id)
+            .order_by(Email.created_at.desc())
         )
 
     def get_emails_by_provider(
@@ -313,3 +331,23 @@ class EmailService(SoftDeleteService[Email]):
         query = self.db.query(EmailEvent)
         query = apply_filters(query, EmailEvent, filters)
         return query.all()
+
+    def restore_email(self, email_id: UUID) -> bool:
+        """Restore a soft-deleted email by setting deleted_at to None."""
+        return self.restore_record(email_id)
+
+    def hard_delete_email(self, email_id: UUID) -> bool:
+        """Permanently delete a email from the database."""
+        return self.hard_delete_record(email_id)
+
+    def get_deleted_emails(self, skip: int = 0, limit: int = 100) -> List[Email]:
+        """Get all soft-deleted emails."""
+        return self.get_deleted_records(skip, limit)
+
+    def get_deleted_email(self, email_id: UUID) -> Optional[Email]:
+        """Get a single soft-deleted email by ID."""
+        return self.get_deleted_record(email_id)
+
+    def get_emails_deleted_after(self, date: datetime) -> List[Email]:
+        """Get emails deleted after a specific date."""
+        return self.get_records_deleted_after(date)

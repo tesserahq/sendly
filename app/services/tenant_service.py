@@ -1,3 +1,4 @@
+import datetime
 from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -29,7 +30,12 @@ class TenantService(SoftDeleteService[Tenant]):
         Returns:
             Optional[Tenant]: The tenant or None if not found
         """
-        return self.db.query(Tenant).filter(Tenant.id == tenant_id).first()
+        return (
+            self.db.query(Tenant)
+            .join(Tenant.provider)
+            .filter(Tenant.id == tenant_id)
+            .first()
+        )
 
     def get_tenant_by_name(self, name: str) -> Optional[Tenant]:
         """
@@ -55,6 +61,16 @@ class TenantService(SoftDeleteService[Tenant]):
             List[Tenant]: List of tenants
         """
         return self.db.query(Tenant).offset(skip).limit(limit).all()
+
+    def get_tenants_query(self):
+        """
+        Get a query for all tenants.
+        This is useful for pagination with fastapi-pagination.
+
+        Returns:
+            Query: SQLAlchemy query object for tenants
+        """
+        return self.db.query(Tenant).order_by(Tenant.created_at.desc())
 
     def get_tenants_by_provider(
         self, provider_id: UUID, skip: int = 0, limit: int = 100
@@ -141,3 +157,23 @@ class TenantService(SoftDeleteService[Tenant]):
         query = self.db.query(Tenant)
         query = apply_filters(query, Tenant, filters)
         return query.all()
+
+    def restore_tenant(self, tenant_id: UUID) -> bool:
+        """Restore a soft-deleted tenant by setting deleted_at to None."""
+        return self.restore_record(tenant_id)
+
+    def hard_delete_tenant(self, tenant_id: UUID) -> bool:
+        """Permanently delete a tenant from the database."""
+        return self.hard_delete_record(tenant_id)
+
+    def get_deleted_tenants(self, skip: int = 0, limit: int = 100) -> List[Tenant]:
+        """Get all soft-deleted tenants."""
+        return self.get_deleted_records(skip, limit)
+
+    def get_deleted_tenant(self, tenant_id: UUID) -> Optional[Tenant]:
+        """Get a single soft-deleted tenant by ID."""
+        return self.get_deleted_record(tenant_id)
+
+    def get_tenants_deleted_after(self, date: datetime) -> List[Tenant]:
+        """Get tenants deleted after a specific date."""
+        return self.get_records_deleted_after(date)

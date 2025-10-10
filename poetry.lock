@@ -1971,6 +1971,21 @@ dev = ["pre-commit", "tox"]
 testing = ["coverage", "pytest", "pytest-benchmark"]
 
 [[package]]
+name = "postmarker"
+version = "1.0"
+description = "Python client library for Postmark API"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "postmarker-1.0-py3-none-any.whl", hash = "sha256:0fa49f236c7193650896cbf31bbfac34043e352574c6c7e3e2ad2b954704f064"},
+    {file = "postmarker-1.0.tar.gz", hash = "sha256:e735303fdf8ede667a1c6e64a95a96e97f0dabbeca726d0ae1f066bdd799fe34"},
+]
+
+[package.dependencies]
+requests = ">=2.20.0"
+
+[[package]]
 name = "prompt-toolkit"
 version = "3.0.52"
 description = "Library for building powerful interactive command lines in Python"
@@ -3625,4 +3640,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "ab767b444c225bc6cb4ca99be89cce20ea5d78f90608f029a08b18fcc7f9b7a2"
+content-hash = "81dc5c033d18723f320c061736c92b502c779c0a61490136a4b9a445b3cf08ee"

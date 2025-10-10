@@ -8,8 +8,8 @@ def setup_tenant(db, setup_provider, faker):
     tenant_data = {
         "name": faker.company(),
         "provider_id": setup_provider.id,
-        "provider_api_key": faker.password(length=32),
-        "provider_metadata": {
+        "provider_settings": {
+            "api_key": faker.password(length=32),
             "region": faker.random_element(["us-east-1", "us-west-2", "eu-west-1"]),
             "endpoint": faker.url(),
         },
@@ -29,8 +29,8 @@ def setup_another_tenant(db, setup_provider, faker):
     tenant_data = {
         "name": faker.company(),
         "provider_id": setup_provider.id,
-        "provider_api_key": faker.password(length=32),
-        "provider_metadata": {
+        "provider_settings": {
+            "api_key": faker.password(length=32),
             "region": faker.random_element(["us-east-1", "us-west-2", "eu-west-1"]),
             "endpoint": faker.url(),
         },

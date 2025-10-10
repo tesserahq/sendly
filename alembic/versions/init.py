@@ -97,8 +97,7 @@ def upgrade() -> None:
         ),
         sa.Column("name", sa.String, unique=True, nullable=False),
         sa.Column("provider_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("provider_api_key", sa.String, nullable=False),
-        sa.Column("provider_metadata", postgresql.JSONB, nullable=False),
+        sa.Column("provider_settings", sa.String, nullable=True),
         sa.Column(
             "created_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
         ),
