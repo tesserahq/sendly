@@ -35,7 +35,7 @@ class LoggingConfig:
 
         # Debug logging to understand context
         if is_celery:
-            print(f"DEBUG: Detected Celery worker context")
+            print("DEBUG: Detected Celery worker context")
             print(f"DEBUG: sys.argv = {sys.argv}")
             print(f"DEBUG: PROCESS_NAME = {os.environ.get('PROCESS_NAME', 'None')}")
 
@@ -62,7 +62,7 @@ class LoggingConfig:
             )
             handler.setFormatter(formatter)
             root_logger.addHandler(handler)
-            print(f"DEBUG: Added handler to root logger")
+            print("DEBUG: Added handler to root logger")
 
         # Configure specific loggers
         loggers = {

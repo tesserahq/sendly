@@ -10,8 +10,10 @@ from fastapi_pagination import add_pagination
 
 from .routers import (
     user,
+    email,
+    tenant,
+    provider,
 )
-from .ws import status
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from app.telemetry import setup_tracing
 from app.exceptions.handlers import register_exception_handlers
@@ -79,6 +81,10 @@ def create_app(testing: bool = False, auth_middleware=None) -> FastAPI:
     )
 
     app.include_router(user.router)
+    app.include_router(email.router)
+    app.include_router(email.tenant_emails_router)
+    app.include_router(tenant.router)
+    app.include_router(provider.router)
 
     register_exception_handlers(app)
 

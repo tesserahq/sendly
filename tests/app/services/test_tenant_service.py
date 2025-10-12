@@ -4,6 +4,21 @@ from sqlalchemy.orm import Session
 from app.models.tenant import Tenant
 from app.schemas.tenant import TenantCreate, TenantUpdate
 from app.services.tenant_service import TenantService
+from unittest.mock import patch
+import os
+
+
+@pytest.fixture(autouse=True)
+def setup_env():
+    """Set up environment for crypto tests."""
+    with patch.dict(
+        os.environ,
+        {
+            "FERNET_KEY": "gs1v9D6SFfjr2yLw5aAiyY42Wr5ZFq4_Ad3AHtNqSqI=",
+            "ENV": "test",
+        },
+    ):
+        yield
 
 
 @pytest.fixture
@@ -12,8 +27,8 @@ def sample_tenant_data(setup_provider):
     return {
         "name": "Test Tenant",
         "provider_id": setup_provider.id,
-        "provider_api_key": "test_api_key_12345",
-        "provider_metadata": {
+        "provider_settings": {
+            "api_key": "test_api_key_12345",
             "region": "us-east-1",
             "endpoint": "https://api.example.com",
         },
@@ -40,8 +55,7 @@ def test_create_tenant(db: Session, sample_tenant_data):
     assert tenant.id is not None
     assert tenant.name == sample_tenant_data["name"]
     assert tenant.provider_id == sample_tenant_data["provider_id"]
-    assert tenant.provider_api_key == sample_tenant_data["provider_api_key"]
-    assert tenant.provider_metadata == sample_tenant_data["provider_metadata"]
+    assert tenant.provider_settings == sample_tenant_data["provider_settings"]
     assert tenant.created_at is not None
     assert tenant.updated_at is not None
 
@@ -87,8 +101,11 @@ def test_get_tenants_with_pagination(db: Session, setup_provider):
         tenant_create = TenantCreate(
             name=f"Test Tenant {i}",
             provider_id=setup_provider.id,
-            provider_api_key=f"api_key_{i}",
-            provider_metadata={"index": i},
+            provider_settings={
+                "api_key": f"api_key_{i}",
+                "region": "us-east-1",
+                "endpoint": "https://api.example.com",
+            },
         )
         tenant_service.create_tenant(tenant_create)
 
@@ -111,8 +128,11 @@ def test_get_tenants_by_provider(db: Session, setup_provider, setup_another_prov
         tenant_create = TenantCreate(
             name=f"Provider 1 Tenant {i}",
             provider_id=setup_provider.id,
-            provider_api_key=f"api_key_p1_{i}",
-            provider_metadata={"provider": 1, "index": i},
+            provider_settings={
+                "api_key": f"api_key_p1_{i}",
+                "region": "us-east-1",
+                "endpoint": "https://api.example.com",
+            },
         )
         tenant_service.create_tenant(tenant_create)
 
@@ -121,8 +141,11 @@ def test_get_tenants_by_provider(db: Session, setup_provider, setup_another_prov
         tenant_create = TenantCreate(
             name=f"Provider 2 Tenant {i}",
             provider_id=setup_another_provider.id,
-            provider_api_key=f"api_key_p2_{i}",
-            provider_metadata={"provider": 2, "index": i},
+            provider_settings={
+                "api_key": f"api_key_p2_{i}",
+                "region": "us-east-1",
+                "endpoint": "https://api.example.com",
+            },
         )
         tenant_service.create_tenant(tenant_create)
 
@@ -144,8 +167,11 @@ def test_update_tenant(db: Session, sample_tenant):
     # Update data
     update_data = {
         "name": "Updated Tenant Name",
-        "provider_api_key": "updated_api_key",
-        "provider_metadata": {"region": "eu-west-1", "updated": True},
+        "provider_settings": {
+            "api_key": "updated_api_key",
+            "region": "eu-west-1",
+            "endpoint": "https://api.example.com",
+        },
     }
     tenant_update = TenantUpdate(**update_data)
 
@@ -156,24 +182,28 @@ def test_update_tenant(db: Session, sample_tenant):
     assert updated_tenant is not None
     assert updated_tenant.id == sample_tenant.id
     assert updated_tenant.name == update_data["name"]
-    assert updated_tenant.provider_api_key == update_data["provider_api_key"]
-    assert updated_tenant.provider_metadata == update_data["provider_metadata"]
+    assert updated_tenant.provider_settings == update_data["provider_settings"]
 
 
 def test_update_tenant_partial(db: Session, sample_tenant):
     """Test partially updating a tenant."""
     original_name = sample_tenant.name
-    original_api_key = sample_tenant.provider_api_key
+    original_api_key = sample_tenant.provider_settings["api_key"]
 
     # Partial update (only metadata)
-    tenant_update = TenantUpdate(provider_metadata={"updated": True})
+    tenant_update = TenantUpdate(
+        provider_settings={"updated": True, "api_key": original_api_key}
+    )
     updated_tenant = TenantService(db).update_tenant(sample_tenant.id, tenant_update)
 
     # Assertions - name and api_key should remain unchanged
     assert updated_tenant is not None
     assert updated_tenant.name == original_name
-    assert updated_tenant.provider_api_key == original_api_key
-    assert updated_tenant.provider_metadata == {"updated": True}
+    assert updated_tenant.provider_settings["api_key"] == original_api_key
+    assert updated_tenant.provider_settings == {
+        "updated": True,
+        "api_key": original_api_key,
+    }
 
 
 def test_delete_tenant(db: Session, sample_tenant):

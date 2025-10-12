@@ -13,11 +13,8 @@ class TenantBase(BaseModel):
     provider_id: UUID
     """Provider ID. Required field."""
 
-    provider_api_key: str
+    provider_settings: Dict[str, Any]
     """Provider API key. Required field."""
-
-    provider_metadata: Dict[str, Any]
-    """Provider metadata as JSON. Required field."""
 
 
 class TenantCreate(TenantBase):
@@ -35,11 +32,8 @@ class TenantUpdate(BaseModel):
     provider_id: Optional[UUID] = None
     """Updated provider ID."""
 
-    provider_api_key: Optional[str] = None
-    """Updated provider API key."""
-
-    provider_metadata: Optional[Dict[str, Any]] = None
-    """Updated provider metadata."""
+    provider_settings: Optional[Dict[str, Any]] = None
+    """Updated provider settings."""
 
 
 class TenantInDB(TenantBase):

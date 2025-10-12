@@ -1,8 +1,8 @@
 from sqlalchemy.orm import relationship
 from app.models.mixins import TimestampMixin, SoftDeleteMixin
-from sqlalchemy import Column, String, Boolean, DateTime, Index, text
+from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import UUID
-
+from slugify import slugify
 import uuid
 
 from app.db import Base
@@ -20,6 +20,9 @@ class Provider(Base, TimestampMixin, SoftDeleteMixin):
 
     tenants = relationship("Tenant", back_populates="provider")
     emails = relationship("Email", back_populates="provider")
+
+    def slug(self) -> str:
+        return slugify(self.name)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

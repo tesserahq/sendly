@@ -1,3 +1,4 @@
+import datetime
 from typing import List, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -105,6 +106,26 @@ class ProviderService(SoftDeleteService[Provider]):
             bool: True if the provider was deleted, False otherwise
         """
         return self.delete_record(provider_id)
+
+    def restore_provider(self, provider_id: UUID) -> bool:
+        """Restore a soft-deleted provider by setting deleted_at to None."""
+        return self.restore_record(provider_id)
+
+    def hard_delete_provider(self, provider_id: UUID) -> bool:
+        """Permanently delete a provider from the database."""
+        return self.hard_delete_record(provider_id)
+
+    def get_deleted_providers(self, skip: int = 0, limit: int = 100) -> List[Provider]:
+        """Get all soft-deleted providers."""
+        return self.get_deleted_records(skip, limit)
+
+    def get_deleted_provider(self, provider_id: UUID) -> Optional[Provider]:
+        """Get a single soft-deleted provider by ID."""
+        return self.get_deleted_record(provider_id)
+
+    def get_providers_deleted_after(self, date: datetime) -> List[Provider]:
+        """Get providers deleted after a specific date."""
+        return self.get_records_deleted_after(date)
 
     def search(self, filters: dict) -> List[Provider]:
         """
