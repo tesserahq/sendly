@@ -82,6 +82,9 @@ class EmailBase(BaseModel):
     provider_id: UUID
     """Provider ID used to send the email. Required field."""
 
+    provider_message_id: Optional[str] = None
+    """Provider message ID."""
+
     tenant_id: UUID
     """Tenant ID that owns this email. Required field."""
 
@@ -112,6 +115,9 @@ class EmailUpdate(BaseModel):
 
     sent_at: Optional[datetime] = None
     """Updated sent timestamp."""
+
+    provider_message_id: Optional[str] = None
+    """Updated provider message ID."""
 
     error_message: Optional[str] = None
     """Updated error message."""

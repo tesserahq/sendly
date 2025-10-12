@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Dict, Any
 from uuid import UUID
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import paginate
 
 from app.db import get_db
 from app.commands.send_email_command import SendEmailCommand
-from app.providers.base import EmailSendRequest, EmailSendResult
+from app.providers.base import EmailSendRequest
 from app.schemas.email import Email
 from app.services.email_service import EmailService
 from app.services.tenant_service import TenantService
@@ -26,10 +25,8 @@ tenant_emails_router = APIRouter(
 )
 
 
-@router.post("/send", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
-def send_email(
-    request: EmailSendRequest, db: Session = Depends(get_db)
-) -> Dict[str, Any]:
+@router.post("/send", response_model=Email, status_code=status.HTTP_200_OK)
+def send_email(request: EmailSendRequest, db: Session = Depends(get_db)) -> Email:
     """
     Send an email using the tenant's configured email provider.
 
@@ -41,25 +38,9 @@ def send_email(
     """
     # try:
     command = SendEmailCommand(db)
-    result: EmailSendResult = command.execute(request)
+    email = command.execute(request)
 
-    if not result.ok:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error_code": result.error_code,
-                "error_message": result.error_message,
-                "provider_meta": result.provider_meta,
-            },
-        )
-
-    return {
-        "data": {
-            "ok": result.ok,
-            "provider_message_id": result.provider_message_id,
-            "provider_meta": result.provider_meta,
-        }
-    }
+    return email
 
     # except ValueError as e:
     #     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

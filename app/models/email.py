@@ -23,6 +23,7 @@ class Email(Base, TimestampMixin, SoftDeleteMixin):
     status = Column(String, nullable=False)
     sent_at = Column(DateTime, nullable=True)  # when the email was sent to the provider
     provider_id = Column(UUID(as_uuid=True), ForeignKey("providers.id"), nullable=False)
+    provider_message_id = Column(String, nullable=True)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
     error_message = Column(String, nullable=True)
 

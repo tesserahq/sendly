@@ -1,13 +1,14 @@
 from __future__ import annotations
 from sqlalchemy.orm import Session
 
+from app.models.email import Email
 from app.providers.registry import get_provider
 from datetime import datetime
 from app.services.tenant_service import TenantService
 from app.services.email_service import EmailService
 from app.schemas.email import EmailCreate, EmailEventCreate, EmailUpdate
 from app.constants.email import EmailStatus
-from app.providers.base import EmailSendRequest, EmailSendResult
+from app.providers.base import EmailSendRequest
 from mako.template import Template
 
 
@@ -17,7 +18,7 @@ class SendEmailCommand:
         self.tenant_service = TenantService(db)
         self.email_service = EmailService(db)
 
-    def execute(self, req: EmailSendRequest) -> EmailSendResult:
+    def execute(self, req: EmailSendRequest) -> Email:
         # 1) resolve tenant/provider
         tenant = self.tenant_service.get_tenant(req.tenant_id)
         if not tenant:
@@ -57,13 +58,13 @@ class SendEmailCommand:
                 sent_at=now,
                 provider_message_id=result.provider_message_id,
             )
-            self.email_service.update_email(email.id, email_update)
+            updated_email = self.email_service.update_email(email.id, email_update)
         else:
             email_update = EmailUpdate(
                 status=EmailStatus.FAILED,
                 updated_at=now,
             )
-            self.email_service.update_email(email.id, email_update)
+            updated_email = self.email_service.update_email(email.id, email_update)
             self.email_service.create_email_event(
                 EmailEventCreate(
                     email_id=email.id,
@@ -76,4 +77,4 @@ class SendEmailCommand:
                 )
             )
 
-        return result
+        return updated_email

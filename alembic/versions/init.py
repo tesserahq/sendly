@@ -124,6 +124,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String, nullable=False),
         sa.Column("sent_at", sa.DateTime, nullable=True),
         sa.Column("provider_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("provider_message_id", sa.String, nullable=True),
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("error_message", sa.String, nullable=True),
         sa.Column(
