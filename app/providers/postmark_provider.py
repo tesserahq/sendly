@@ -19,7 +19,7 @@ class PostmarkProvider(EmailProvider):
         result = postmark.emails.send(
             From=req.from_email,
             # Check if postmark support sending to multiple recipients
-            To=req.personalization.to[0],
+            To=req.to[0],
             Subject=req.subject,
             HtmlBody=req.html,
             TextBody=req.text,

@@ -16,12 +16,6 @@ class Attachment(BaseModel):
     mime_type: str = "application/octet-stream"
 
 
-class EmailPersonalization(BaseModel):
-    to: List[EmailStr]
-    cc: List[EmailStr] = []
-    bcc: List[EmailStr] = []
-
-
 class EmailSendRequest(BaseModel):
     tenant_id: str
     from_email: EmailStr
@@ -29,7 +23,9 @@ class EmailSendRequest(BaseModel):
     html: Optional[str] = None
     text: Optional[str] = None
     attachments: List[Attachment] = []
-    personalization: EmailPersonalization
+    to: List[EmailStr]
+    cc: List[EmailStr] = []
+    bcc: List[EmailStr] = []
     template_id: Optional[str] = None
     template_variables: Dict[str, Any] = Field(default_factory=dict)
     custom_headers: Dict[str, str] = Field(default_factory=dict)

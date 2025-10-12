@@ -39,9 +39,10 @@ class SendEmailCommand:
         # 2) persist initial email row
         email = EmailCreate(
             tenant_id=tenant.id,
-            provider_id=provider.id,
+            # We save the tenant provider in case it is changed in the future
+            provider_id=tenant.provider_id,
             from_email=str(req.from_email),
-            to_email=str(req.personalization.to[0]),
+            to_email=str(req.to[0]),
             subject=req.subject,
             body=html,
             status=EmailStatus.QUEUED,
