@@ -36,23 +36,14 @@ def send_email(request: EmailSendRequest, db: Session = Depends(get_db)) -> Emai
     Returns the result of the send operation including success status and
     provider message ID if successful.
     """
-    # try:
-    command = SendEmailCommand(db)
-    email = command.execute(request)
+    try:
+        command = SendEmailCommand(db)
+        email = command.execute(request)
 
-    return email
+        return email
 
-    # except ValueError as e:
-    #     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    # except ProviderError as e:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Provider error: {str(e)}"
-    #     )
-    # except Exception as e:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-    #         detail=f"Failed to send email: {str(e)}",
-    #     )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get("/{email_id}", response_model=Email)

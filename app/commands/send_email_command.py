@@ -29,12 +29,19 @@ class SendEmailCommand:
 
         # TODO: We should probably move this into its own class and out
         # of the provider class
-        html_tmpl = Template(req.html)
-        # text_tmpl = Template(
-        #     req.text
-        # )
-        html = html_tmpl.render(**req.template_variables)
-        # text = text_tmpl.render(**req.template_variables)
+        try:
+            html_tmpl = Template(req.html)
+            # text_tmpl = Template(
+            #     req.text
+            # )
+            html = html_tmpl.render(**req.template_variables)
+            # text = text_tmpl.render(**req.template_variables)
+        except NameError as e:
+            raise ValueError(
+                f"Template rendering failed: undefined variable in template. "
+                f"Template variables provided: {list(req.template_variables.keys())}. "
+                f"Error: {str(e)}"
+            )
 
         # 2) persist initial email row
         email = EmailCreate(
