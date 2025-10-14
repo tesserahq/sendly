@@ -20,5 +20,5 @@
 
 * Performance and Scalability: Use Redis for queuing or caching to handle high volume email sending without blocking API calls. For example, emails can be enqueued and sent by background workers to improve throughput and responsiveness.
 
-## Repobeats
+---
 ![Alt](https://repobeats.axiom.co/api/embed/5b1e6fac4a6e12b6cfaac1aad31ada385f55879b.svg "Repobeats analytics image")
