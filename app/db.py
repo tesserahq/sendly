@@ -1,26 +1,19 @@
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import (
-    sessionmaker,
-    declarative_base,
-    with_loader_criteria,
-    Session,
-)
+"""
+Database setup module.
+
+This module uses DatabaseManager internally but maintains backward compatibility
+by exposing the same interface (engine, SessionLocal, Base, get_db).
+
+To move to a common package, use DatabaseManager directly.
+"""
+
 from app.config import get_settings
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from tessera_sdk.core.database_manager import DatabaseManager
+from sqlalchemy.orm import declarative_base
+from sqlalchemy import event
+from sqlalchemy.orm import Session
+from sqlalchemy.orm import with_loader_criteria
 
-settings = get_settings()
-
-engine = create_engine(
-    settings.database_url,
-    pool_size=settings.database_pool_size,
-    max_overflow=settings.database_max_overflow,
-)
-
-SQLAlchemyInstrumentor().instrument(
-    enable_commenter=True, commenter_options={}, engine=engine
-)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
@@ -42,10 +35,19 @@ def _add_soft_delete_criteria(execute_state):
         )
 
 
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Initialize database manager
+settings = get_settings()
+db_manager = DatabaseManager(
+    database_url=settings.database_url,
+    pool_size=settings.database_pool_size,
+    max_overflow=settings.database_max_overflow,
+    pool_pre_ping=True,
+    pool_recycle=300,
+    pool_use_lifo=True,
+    application_name=settings.db_app_name,
+)
+
+# Expose the same interface for backward compatibility
+engine = db_manager.engine
+SessionLocal = db_manager.SessionLocal
+get_db = db_manager.get_db

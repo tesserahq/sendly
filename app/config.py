@@ -69,6 +69,10 @@ class Settings(BaseSettings):
         default="https://quore-api.meetsendly.com",
         json_schema_extra={"env": "QUORE_API_URL"},
     )
+    db_app_name: str = Field(
+        default="sendly-api",
+        json_schema_extra={"env": "DB_APP_NAME"},
+    )
 
     @model_validator(mode="before")
     def set_database_url(cls, values):
