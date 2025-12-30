@@ -73,7 +73,7 @@ def create_app(testing: bool = False, auth_middleware=None) -> FastAPI:
             AuthenticationMiddleware,
             identies_base_url=settings.identies_host,
             skip_paths=SKIP_PATHS,
-            database_manager=db_manager,
+            user_service_factory=user_service_factory,
         )
 
         # Setting metrics middleware
