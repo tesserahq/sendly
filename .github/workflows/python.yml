@@ -39,7 +39,7 @@ jobs:
       ENV: test
       ROLLBAR_ACCESS_TOKEN: 7cd9dd0b5df9462b8ebdfb522af61cd2
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - name: Wait for DB to be ready
         run: |
           for i in {1..5}; do
