@@ -41,6 +41,7 @@ opentelemetry-exporter-otlp-proto-grpc = "^1.39.1"
 opentelemetry-sdk = "^1.39.1"
 opentelemetry-instrumentation-sqlalchemy = "^0.60b1"
 opentelemetry-instrumentation-logging = "^0.60b1"
+opentelemetry-instrumentation-requests = "^0.60b1"
 prometheus-client = ">=0.23.1"
 
 requests = "^2.32.3"

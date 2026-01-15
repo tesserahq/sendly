@@ -8,6 +8,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
 
 def setup_tracing(endpoint: Optional[str] = None):
@@ -28,5 +29,7 @@ def setup_tracing(endpoint: Optional[str] = None):
 
     span_processor = BatchSpanProcessor(otlp_exporter)
     tracer_provider.add_span_processor(span_processor)
+
+    RequestsInstrumentor().instrument()
 
     return tracer_provider
