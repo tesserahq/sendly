@@ -3,19 +3,26 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable
 from datetime import datetime, timezone
 from .base import (
-    EmailSendRequest,
+    EmailCreateRequest,
     EmailSendResult,
     EmailEvent,
 )
 from postmarker.core import PostmarkClient
 from app.providers.email_provider import EmailProvider
+from app.config import get_settings
 
 
 class PostmarkProvider(EmailProvider):
-    def send_email(self, req: EmailSendRequest) -> EmailSendResult:
-        settings = self.settings
+    provider_id = "postmark"
+    provider_name = "Postmark"
+    enabled = True
+    default = True
+    site = "https://postmarkapp.com"
 
-        postmark = PostmarkClient(server_token=settings["api_key"])
+    def send_email(self, req: EmailCreateRequest) -> EmailSendResult:
+        settings = get_settings()
+
+        postmark = PostmarkClient(server_token=settings.postmark_api_key)
         result = postmark.emails.send(
             From=req.from_email,
             # Check if postmark support sending to multiple recipients
@@ -58,7 +65,7 @@ class PostmarkProvider(EmailProvider):
             occurred = datetime.now(timezone.utc)
 
         yield EmailEvent(
-            tenant_id="__resolve_from_routing__",
+            project_id="__resolve_from_routing__",
             provider_name="postmark",
             provider_message_id=str(msg_id),
             type=_map_pm_type(record_type, payload.get("Type")),

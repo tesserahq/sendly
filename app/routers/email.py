@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from uuid import UUID
 from fastapi_pagination import Page, Params
@@ -6,10 +7,13 @@ from fastapi_pagination.ext.sqlalchemy import paginate
 
 from app.db import get_db
 from app.commands.send_email_command import SendEmailCommand
-from app.providers.base import EmailSendRequest
+from app.providers.base import EmailCreateRequest
 from app.schemas.email import Email
 from app.services.email_service import EmailService
-from app.services.tenant_service import TenantService
+from app.auth.rbac import build_rbac_dependencies
+from fastapi import Request
+from typing import Annotated
+from app.routers.utils.dependencies import get_email_by_id
 
 router = APIRouter(
     prefix="/emails",
@@ -17,37 +21,41 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-# Router for nested tenant emails collection routes
-tenant_emails_router = APIRouter(
-    prefix="/tenants",
-    tags=["emails"],
-    responses={404: {"description": "Not found"}},
+
+async def infer_project(request: Request) -> Optional[str]:
+    """
+    Infer the project from the query parameter 'tags' by extracting the value for 'project_id'.
+    The 'tags' parameter is expected to be an array of strings in the format 'key:value'.
+    Returns the value of 'project_id' if present, otherwise returns '*'.
+    """
+    # First, check for explicit project parameter
+    project_id = request.query_params.get("project_id")
+    if project_id:
+        return project_id
+
+    return "*"
+
+
+RESOURCE = "email"
+rbac = build_rbac_dependencies(
+    resource=RESOURCE,
+    project_resolver=infer_project,
 )
 
 
-@router.post("/send", response_model=Email, status_code=status.HTTP_200_OK)
-def send_email(request: EmailSendRequest, db: Session = Depends(get_db)) -> Email:
+@router.post("", response_model=Email, status_code=status.HTTP_200_OK)
+def create_email(request: EmailCreateRequest, db: Session = Depends(get_db)) -> Email:
     """
-    Send an email using the tenant's configured email provider.
-
-    This endpoint takes an email send request, resolves the tenant and provider,
-    persists the email record, and sends it via the configured provider.
-
-    Returns the result of the send operation including success status and
-    provider message ID if successful.
+    Create a new email.
     """
-    try:
-        command = SendEmailCommand(db)
-        email = command.execute(request)
+    command = SendEmailCommand(db)
+    email = command.execute(request)
 
-        return email
-
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return email
 
 
 @router.get("/{email_id}", response_model=Email)
-def get_email(email_id: UUID, db: Session = Depends(get_db)) -> Email:
+def get_email(email: Email = Depends(get_email_by_id)) -> Email:
     """
     Get a specific email by ID.
 
@@ -61,48 +69,37 @@ def get_email(email_id: UUID, db: Session = Depends(get_db)) -> Email:
     Raises:
         HTTPException: If the email is not found
     """
-    email_service = EmailService(db)
-    email = email_service.get_email(email_id)
-
-    if not email:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Email not found"
-        )
-
     return email
 
 
-@tenant_emails_router.get("/{tenant_id}/emails", response_model=Page[Email])
-def list_tenant_emails(
-    tenant_id: UUID,
+@router.get("", response_model=Page[Email])
+def list_emails(
+    project_id: Annotated[
+        Optional[UUID],
+        Query(description="Project ID to filter emails by"),
+    ] = None,
     db: Session = Depends(get_db),
     params: Params = Depends(),
 ) -> Page[Email]:
     """
-    List all emails for a specific tenant with pagination.
+    List all emails for a specific project with pagination.
 
     Args:
-        tenant_id: The UUID of the tenant
+        project_id: The UUID of the project
         db: Database session
         params: Pagination parameters
 
     Returns:
-        Dict containing paginated list of emails for the tenant
+        Dict containing paginated list of emails for the project
 
     Raises:
-        HTTPException: If the tenant is not found
+        HTTPException: If the project is not found
     """
-    # Validate tenant exists
-    tenant_service = TenantService(db)
-    tenant = tenant_service.get_tenant(tenant_id)
 
-    if not tenant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
-        )
-
-    # Query emails for this tenant using the email service
     email_service = EmailService(db)
-    query = email_service.get_emails_by_tenant_query(tenant_id)
+    if project_id:
+        query = email_service.get_emails_by_project_query(project_id)
+    else:
+        query = email_service.get_emails_query()
 
     return paginate(query, params)

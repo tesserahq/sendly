@@ -73,6 +73,9 @@ class Settings(BaseSettings):
         default="sendly-api",
         json_schema_extra={"env": "DB_APP_NAME"},
     )
+    postmark_api_key: str = Field(
+        default="", json_schema_extra={"env": "POSTMARK_API_KEY"}
+    )
 
     @model_validator(mode="before")
     def set_database_url(cls, values):

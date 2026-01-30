@@ -22,13 +22,11 @@ class Email(Base, TimestampMixin, SoftDeleteMixin):
     body = Column(String, nullable=False)
     status = Column(String, nullable=False)
     sent_at = Column(DateTime, nullable=True)  # when the email was sent to the provider
-    provider_id = Column(UUID(as_uuid=True), ForeignKey("providers.id"), nullable=False)
+    provider = Column(String, nullable=False)
     provider_message_id = Column(String, nullable=True)
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    project_id = Column(UUID(as_uuid=True), nullable=True)
     error_message = Column(String, nullable=True)
 
-    tenant = relationship("Tenant", back_populates="emails")
-    provider = relationship("Provider", back_populates="emails")
     events = relationship("EmailEvent", back_populates="email")
 
     def __init__(self, **kwargs):

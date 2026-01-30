@@ -5,7 +5,7 @@ from app.models.email_event import EmailEvent
 
 
 @pytest.fixture(scope="function")
-def setup_email(db, setup_tenant, setup_provider, faker):
+def setup_email(db, faker):
     """Create a test email for use in tests."""
     email_data = {
         "from_email": faker.email(),
@@ -13,8 +13,8 @@ def setup_email(db, setup_tenant, setup_provider, faker):
         "subject": faker.sentence(),
         "body": faker.text(),
         "status": "pending",
-        "provider_id": setup_provider.id,
-        "tenant_id": setup_tenant.id,
+        "provider": "postmark",
+        "project_id": None,
     }
 
     email = Email(**email_data)
@@ -26,7 +26,7 @@ def setup_email(db, setup_tenant, setup_provider, faker):
 
 
 @pytest.fixture(scope="function")
-def setup_another_email(db, setup_tenant, setup_provider, faker):
+def setup_another_email(db, faker):
     """Create another test email for use in tests."""
     email_data = {
         "from_email": faker.email(),
@@ -34,8 +34,8 @@ def setup_another_email(db, setup_tenant, setup_provider, faker):
         "subject": faker.sentence(),
         "body": faker.text(),
         "status": "sent",
-        "provider_id": setup_provider.id,
-        "tenant_id": setup_tenant.id,
+        "provider": "postmark",
+        "project_id": None,
         "sent_at": datetime.now(timezone.utc),
     }
 

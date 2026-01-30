@@ -49,6 +49,7 @@ def upgrade() -> None:
         sa.Column("confirmed_at", sa.DateTime, nullable=True),
         sa.Column("verified", sa.Boolean, default=False),
         sa.Column("verified_at", sa.DateTime, nullable=True),
+        sa.Column("service_account", sa.Boolean, default=False),
         sa.Column(
             "created_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
         ),
@@ -67,47 +68,6 @@ def upgrade() -> None:
         postgresql_where=sa.text("external_id IS NOT NULL"),
     )
 
-    # Create providers table
-    op.create_table(
-        "providers",
-        sa.Column(
-            "id",
-            postgresql.UUID(as_uuid=True),
-            primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
-        ),
-        sa.Column("name", sa.String, unique=True, nullable=False),
-        sa.Column(
-            "created_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
-        ),
-        sa.Column(
-            "updated_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
-        ),
-        sa.Column("deleted_at", sa.DateTime(), nullable=True),
-    )
-
-    # Create tenants table
-    op.create_table(
-        "tenants",
-        sa.Column(
-            "id",
-            postgresql.UUID(as_uuid=True),
-            primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
-        ),
-        sa.Column("name", sa.String, unique=True, nullable=False),
-        sa.Column("provider_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("provider_settings", sa.String, nullable=True),
-        sa.Column(
-            "created_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
-        ),
-        sa.Column(
-            "updated_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
-        ),
-        sa.Column("deleted_at", sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(["provider_id"], ["providers.id"]),
-    )
-
     # Create emails table
     op.create_table(
         "emails",
@@ -123,9 +83,9 @@ def upgrade() -> None:
         sa.Column("body", sa.String, nullable=False),
         sa.Column("status", sa.String, nullable=False),
         sa.Column("sent_at", sa.DateTime, nullable=True),
-        sa.Column("provider_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("provider", sa.String, nullable=False),
         sa.Column("provider_message_id", sa.String, nullable=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("project_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("error_message", sa.String, nullable=True),
         sa.Column(
             "created_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
@@ -134,8 +94,6 @@ def upgrade() -> None:
             "updated_at", sa.DateTime, nullable=False, server_default=sa.text("now()")
         ),
         sa.Column("deleted_at", sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(["provider_id"], ["providers.id"]),
-        sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
     )
 
     # Create email_events table
@@ -166,7 +124,6 @@ def downgrade() -> None:
     # Drop tables in reverse order
     op.drop_table("email_events")
     op.drop_table("emails")
-    op.drop_table("tenants")
     op.drop_table("providers")
 
     # Drop the partial unique index
