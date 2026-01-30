@@ -2,7 +2,6 @@ from typing import Any, Dict, Callable
 from sqlalchemy.orm import Query
 from sqlalchemy.sql import ColumnElement
 
-
 # Supported operators
 OPERATORS: Dict[str, Callable[[ColumnElement, Any], ColumnElement]] = {
     "==": lambda col, val: col == val,

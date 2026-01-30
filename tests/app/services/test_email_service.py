@@ -12,7 +12,6 @@ from app.schemas.email import (
 )
 from app.services.email_service import EmailService
 
-
 # ==================== Email Fixtures ====================
 
 

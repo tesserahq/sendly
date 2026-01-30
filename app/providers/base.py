@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 
-
 # ---------------------------
 # Pydantic I/O Schemas
 # ---------------------------

@@ -5,7 +5,6 @@ from typing import Any, Dict, Iterable
 
 from app.providers.base import EmailEvent, EmailSendRequest, EmailSendResult
 
-
 # ---------------------------
 # Provider Interface
 # ---------------------------
