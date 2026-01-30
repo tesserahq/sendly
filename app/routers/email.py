@@ -14,6 +14,8 @@ from app.auth.rbac import build_rbac_dependencies
 from fastapi import Request
 from typing import Annotated
 from app.routers.utils.dependencies import get_email_by_id
+import json
+from json import JSONDecodeError
 
 router = APIRouter(
     prefix="/emails",
@@ -30,10 +32,17 @@ async def infer_project(request: Request) -> Optional[str]:
     """
     # First, check for explicit project parameter
     project_id = request.query_params.get("project_id")
-    if project_id:
-        return project_id
 
-    return "*"
+    if not project_id:
+        body_bytes = await request.body()
+        if body_bytes:
+            try:
+                body = json.loads(body_bytes)
+                project_id = body.get("project_id")
+            except JSONDecodeError:
+                pass  # ignore invalid JSON
+
+    return project_id or "*"
 
 
 RESOURCE = "email"
@@ -44,7 +53,11 @@ rbac = build_rbac_dependencies(
 
 
 @router.post("", response_model=Email, status_code=status.HTTP_200_OK)
-def create_email(request: EmailCreateRequest, db: Session = Depends(get_db)) -> Email:
+def create_email(
+    request: EmailCreateRequest,
+    db: Session = Depends(get_db),
+    _authorized: bool = Depends(rbac["create"]),
+) -> Email:
     """
     Create a new email.
     """
@@ -55,7 +68,10 @@ def create_email(request: EmailCreateRequest, db: Session = Depends(get_db)) -> 
 
 
 @router.get("/{email_id}", response_model=Email)
-def get_email(email: Email = Depends(get_email_by_id)) -> Email:
+def get_email(
+    email: Email = Depends(get_email_by_id),
+    _authorized: bool = Depends(rbac["read"]),
+) -> Email:
     """
     Get a specific email by ID.
 
@@ -80,6 +96,7 @@ def list_emails(
     ] = None,
     db: Session = Depends(get_db),
     params: Params = Depends(),
+    _authorized: bool = Depends(rbac["read"]),
 ) -> Page[Email]:
     """
     List all emails for a specific project with pagination.
