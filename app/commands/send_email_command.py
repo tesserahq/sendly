@@ -2,30 +2,25 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.models.email import Email
-from app.providers.registry import get_provider
 from datetime import datetime
-from app.services.tenant_service import TenantService
 from app.services.email_service import EmailService
 from app.schemas.email import EmailCreate, EmailEventCreate, EmailUpdate
 from app.constants.email import EmailStatus
-from app.providers.base import EmailSendRequest
+from app.providers.base import EmailCreateRequest
 from mako.template import Template
+from app.providers.registry import get_default_provider
 
 
 class SendEmailCommand:
     def __init__(self, db: Session):
         self.db = db
-        self.tenant_service = TenantService(db)
         self.email_service = EmailService(db)
 
-    def execute(self, req: EmailSendRequest) -> Email:
-        # 1) resolve tenant/provider
-        tenant = self.tenant_service.get_tenant(req.tenant_id)
-        if not tenant:
-            raise ValueError("tenant not found")
-
-        provider = tenant.provider
-        email_provider = get_provider(provider.slug(), tenant.provider_settings)
+    def execute(self, req: EmailCreateRequest) -> Email:
+        """
+        Send an email using the default email provider.
+        """
+        email_provider = get_default_provider()
 
         # TODO: We should probably move this into its own class and out
         # of the provider class
@@ -45,9 +40,8 @@ class SendEmailCommand:
 
         # 2) persist initial email row
         email = EmailCreate(
-            tenant_id=tenant.id,
-            # We save the tenant provider in case it is changed in the future
-            provider_id=tenant.provider_id,
+            project_id=req.project_id,
+            provider=email_provider.provider_id,
             from_email=str(req.from_email),
             to_email=str(req.to[0]),
             subject=req.subject,

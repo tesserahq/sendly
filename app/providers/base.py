@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
+from uuid import UUID
 
 # ---------------------------
 # Pydantic I/O Schemas
@@ -15,8 +16,8 @@ class Attachment(BaseModel):
     mime_type: str = "application/octet-stream"
 
 
-class EmailSendRequest(BaseModel):
-    tenant_id: str
+class EmailCreateRequest(BaseModel):
+    project_id: Optional[UUID] = None
     from_email: EmailStr
     subject: str
     html: Optional[str] = None
@@ -44,7 +45,7 @@ class EmailSendResult(BaseModel):
 
 # Normalized webhook event
 class EmailEvent(BaseModel):
-    tenant_id: str
+    project_id: Optional[UUID] = None
     provider_name: str
     provider_message_id: str
     type: str  # sent|delivered|opened|clicked|bounced|complained|dropped|deferred|spam|unsubscribed

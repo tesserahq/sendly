@@ -1,7 +1,6 @@
 import pytest
 from uuid import uuid4
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session
 from app.models.email import Email
 from app.models.email_event import EmailEvent
 from app.schemas.email import (
@@ -16,7 +15,7 @@ from app.services.email_service import EmailService
 
 
 @pytest.fixture
-def sample_email_data(setup_tenant, setup_provider):
+def sample_email_data():
     """Sample email data for testing."""
     return {
         "from_email": "sender@example.com",
@@ -24,13 +23,13 @@ def sample_email_data(setup_tenant, setup_provider):
         "subject": "Test Email",
         "body": "This is a test email body.",
         "status": "pending",
-        "provider_id": setup_provider.id,
-        "tenant_id": setup_tenant.id,
+        "provider": "postmark",
+        "project_id": None,
     }
 
 
 @pytest.fixture
-def sample_email(db: Session, sample_email_data):
+def sample_email(db, sample_email_data):
     """Create a sample email in the database."""
     email = Email(**sample_email_data)
     db.add(email)
@@ -51,7 +50,7 @@ def sample_email_event_data(sample_email):
 
 
 @pytest.fixture
-def sample_email_event(db: Session, sample_email_event_data):
+def sample_email_event(db, sample_email_event_data):
     """Create a sample email event in the database."""
     event = EmailEvent(**sample_email_event_data)
     db.add(event)
@@ -63,7 +62,7 @@ def sample_email_event(db: Session, sample_email_event_data):
 # ==================== Email Tests ====================
 
 
-def test_create_email(db: Session, sample_email_data):
+def test_create_email(db, sample_email_data):
     """Test creating a new email."""
     # Create email
     email_create = EmailCreate(**sample_email_data)
@@ -76,15 +75,15 @@ def test_create_email(db: Session, sample_email_data):
     assert email.subject == sample_email_data["subject"]
     assert email.body == sample_email_data["body"]
     assert email.status == sample_email_data["status"]
-    assert email.provider_id == sample_email_data["provider_id"]
-    assert email.tenant_id == sample_email_data["tenant_id"]
+    assert email.provider == sample_email_data["provider"]
+    assert email.project_id == sample_email_data["project_id"]
     assert email.sent_at is None
     assert email.error_message is None
     assert email.created_at is not None
     assert email.updated_at is not None
 
 
-def test_get_email(db: Session, sample_email):
+def test_get_email(db, sample_email):
     """Test getting an email by ID."""
     # Get email
     retrieved_email = EmailService(db).get_email(sample_email.id)
@@ -96,7 +95,7 @@ def test_get_email(db: Session, sample_email):
     assert retrieved_email.to_email == sample_email.to_email
 
 
-def test_get_emails(db: Session, sample_email):
+def test_get_emails(db, sample_email):
     """Test getting a list of emails."""
     # Get all emails
     emails = EmailService(db).get_emails()
@@ -106,7 +105,7 @@ def test_get_emails(db: Session, sample_email):
     assert any(e.id == sample_email.id for e in emails)
 
 
-def test_get_emails_with_pagination(db: Session, setup_tenant, setup_provider):
+def test_get_emails_with_pagination(db):
     """Test getting emails with pagination."""
     email_service = EmailService(db)
 
@@ -118,8 +117,8 @@ def test_get_emails_with_pagination(db: Session, setup_tenant, setup_provider):
             subject=f"Test Email {i}",
             body=f"Body {i}",
             status="pending",
-            provider_id=setup_provider.id,
-            tenant_id=setup_tenant.id,
+            provider="postmark",
+            project_id=None,
         )
         email_service.create_email(email_create)
 
@@ -133,52 +132,7 @@ def test_get_emails_with_pagination(db: Session, setup_tenant, setup_provider):
     assert first_page[0].id != second_page[0].id
 
 
-def test_get_emails_by_tenant(
-    db: Session, setup_tenant, setup_another_tenant, setup_provider
-):
-    """Test getting emails for a specific tenant."""
-    email_service = EmailService(db)
-
-    # Create emails for the first tenant
-    for i in range(3):
-        email_create = EmailCreate(
-            from_email=f"sender{i}@example.com",
-            to_email=f"recipient{i}@example.com",
-            subject=f"Tenant 1 Email {i}",
-            body=f"Body {i}",
-            status="pending",
-            provider_id=setup_provider.id,
-            tenant_id=setup_tenant.id,
-        )
-        email_service.create_email(email_create)
-
-    # Create emails for the second tenant
-    for i in range(2):
-        email_create = EmailCreate(
-            from_email=f"sender{i}@example.com",
-            to_email=f"recipient{i}@example.com",
-            subject=f"Tenant 2 Email {i}",
-            body=f"Body {i}",
-            status="pending",
-            provider_id=setup_provider.id,
-            tenant_id=setup_another_tenant.id,
-        )
-        email_service.create_email(email_create)
-
-    # Get emails for each tenant
-    tenant1_emails = email_service.get_emails_by_tenant(setup_tenant.id)
-    tenant2_emails = email_service.get_emails_by_tenant(setup_another_tenant.id)
-
-    # Assertions
-    assert len(tenant1_emails) == 3
-    assert len(tenant2_emails) == 2
-    assert all(e.tenant_id == setup_tenant.id for e in tenant1_emails)
-    assert all(e.tenant_id == setup_another_tenant.id for e in tenant2_emails)
-
-
-def test_get_emails_by_provider(
-    db: Session, setup_provider, setup_another_provider, setup_tenant
-):
+def test_get_emails_by_provider(db):
     """Test getting emails sent through a specific provider."""
     email_service = EmailService(db)
 
@@ -190,36 +144,20 @@ def test_get_emails_by_provider(
             subject=f"Provider 1 Email {i}",
             body=f"Body {i}",
             status="sent",
-            provider_id=setup_provider.id,
-            tenant_id=setup_tenant.id,
-        )
-        email_service.create_email(email_create)
-
-    # Create emails for the second provider
-    for i in range(2):
-        email_create = EmailCreate(
-            from_email=f"sender{i}@example.com",
-            to_email=f"recipient{i}@example.com",
-            subject=f"Provider 2 Email {i}",
-            body=f"Body {i}",
-            status="sent",
-            provider_id=setup_another_provider.id,
-            tenant_id=setup_tenant.id,
+            provider="postmark",
+            project_id=None,
         )
         email_service.create_email(email_create)
 
     # Get emails for each provider
-    provider1_emails = email_service.get_emails_by_provider(setup_provider.id)
-    provider2_emails = email_service.get_emails_by_provider(setup_another_provider.id)
+    provider1_emails = email_service.get_emails_by_provider("postmark")
 
     # Assertions
     assert len(provider1_emails) == 3
-    assert len(provider2_emails) == 2
-    assert all(e.provider_id == setup_provider.id for e in provider1_emails)
-    assert all(e.provider_id == setup_another_provider.id for e in provider2_emails)
+    assert all(e.provider == "postmark" for e in provider1_emails)
 
 
-def test_get_emails_by_status(db: Session, setup_tenant, setup_provider):
+def test_get_emails_by_status(db):
     """Test getting emails with a specific status."""
     email_service = EmailService(db)
 
@@ -232,8 +170,8 @@ def test_get_emails_by_status(db: Session, setup_tenant, setup_provider):
                 subject=f"{status.capitalize()} Email {i}",
                 body=f"Body {i}",
                 status=status,
-                provider_id=setup_provider.id,
-                tenant_id=setup_tenant.id,
+                provider="postmark",
+                project_id=None,
             )
             email_service.create_email(email_create)
 
@@ -252,7 +190,7 @@ def test_get_emails_by_status(db: Session, setup_tenant, setup_provider):
     assert all(e.status == "sent" for e in sent_emails)
 
 
-def test_update_email(db: Session, sample_email):
+def test_update_email(db, sample_email):
     """Test updating an email."""
     # Update data
     update_data = {
@@ -271,7 +209,7 @@ def test_update_email(db: Session, sample_email):
     assert updated_email.sent_at is not None
 
 
-def test_update_email_with_error(db: Session, sample_email):
+def test_update_email_with_error(db, sample_email):
     """Test updating an email with error information."""
     # Update data
     update_data = {
@@ -289,7 +227,7 @@ def test_update_email_with_error(db: Session, sample_email):
     assert updated_email.error_message == update_data["error_message"]
 
 
-def test_delete_email(db: Session, sample_email):
+def test_delete_email(db, sample_email):
     """Test soft deleting an email."""
     email_service = EmailService(db)
 
@@ -302,7 +240,7 @@ def test_delete_email(db: Session, sample_email):
     assert deleted_email is None
 
 
-def test_email_not_found_cases(db: Session, setup_provider, setup_tenant):
+def test_email_not_found_cases(db):
     """Test various not found cases."""
     email_service = EmailService(db)
 
@@ -321,7 +259,7 @@ def test_email_not_found_cases(db: Session, setup_provider, setup_tenant):
     assert email_service.delete_email(non_existent_id) is False
 
 
-def test_search_emails_with_filters(db: Session, sample_email):
+def test_search_emails_with_filters(db, sample_email):
     """Test searching emails with dynamic filters."""
     # Search using exact match on status
     filters = {"status": "pending"}
@@ -341,7 +279,7 @@ def test_search_emails_with_filters(db: Session, sample_email):
 # ==================== Email Event Tests ====================
 
 
-def test_create_email_event(db: Session, sample_email_event_data):
+def test_create_email_event(db, sample_email_event_data):
     """Test creating a new email event."""
     # Create email event
     event_create = EmailEventCreate(**sample_email_event_data)
@@ -357,7 +295,7 @@ def test_create_email_event(db: Session, sample_email_event_data):
     assert event.updated_at is not None
 
 
-def test_get_email_event(db: Session, sample_email_event):
+def test_get_email_event(db, sample_email_event):
     """Test getting an email event by ID."""
     # Get email event
     retrieved_event = EmailService(db).get_email_event(sample_email_event.id)
@@ -369,7 +307,7 @@ def test_get_email_event(db: Session, sample_email_event):
     assert retrieved_event.event_type == sample_email_event.event_type
 
 
-def test_get_email_events(db: Session, sample_email):
+def test_get_email_events(db, sample_email):
     """Test getting all events for an email."""
     email_service = EmailService(db)
 
@@ -394,7 +332,7 @@ def test_get_email_events(db: Session, sample_email):
     assert retrieved_types == set(event_types)
 
 
-def test_get_email_events_by_type(db: Session, sample_email):
+def test_get_email_events_by_type(db, sample_email):
     """Test getting events of a specific type for an email."""
     email_service = EmailService(db)
 
@@ -432,7 +370,7 @@ def test_get_email_events_by_type(db: Session, sample_email):
     assert all(e.event_type == "opened" for e in opened_events)
 
 
-def test_update_email_event(db: Session, sample_email_event):
+def test_update_email_event(db, sample_email_event):
     """Test updating an email event."""
     # Update data
     new_timestamp = datetime.now(timezone.utc)
@@ -455,7 +393,7 @@ def test_update_email_event(db: Session, sample_email_event):
     assert updated_event.details == update_data["details"]
 
 
-def test_delete_email_event(db: Session, sample_email_event):
+def test_delete_email_event(db, sample_email_event):
     """Test deleting an email event."""
     email_service = EmailService(db)
 
@@ -468,7 +406,7 @@ def test_delete_email_event(db: Session, sample_email_event):
     assert deleted_event is None
 
 
-def test_email_event_not_found_cases(db: Session, sample_email):
+def test_email_event_not_found_cases(db, sample_email):
     """Test various not found cases for email events."""
     email_service = EmailService(db)
 
@@ -487,7 +425,7 @@ def test_email_event_not_found_cases(db: Session, sample_email):
     assert email_service.delete_email_event(non_existent_id) is False
 
 
-def test_search_email_events_with_filters(db: Session, sample_email):
+def test_search_email_events_with_filters(db, sample_email):
     """Test searching email events with dynamic filters."""
     email_service = EmailService(db)
 

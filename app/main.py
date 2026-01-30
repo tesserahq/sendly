@@ -8,9 +8,7 @@ from rollbar.contrib.fastapi import ReporterMiddleware as RollbarMiddleware
 from fastapi_pagination import add_pagination
 
 from .routers import (
-    user,
     email,
-    tenant,
     provider,
 )
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -66,12 +64,10 @@ def create_app(testing: bool = False, auth_middleware=None) -> FastAPI:
 
         app.add_middleware(
             UserOnboardingMiddleware,
-            identies_base_url=settings.identies_host,
             user_service_factory=user_service_factory,
         )
         app.add_middleware(
             AuthenticationMiddleware,
-            identies_base_url=settings.identies_host,
             skip_paths=SKIP_PATHS,
             user_service_factory=user_service_factory,
         )
@@ -94,10 +90,7 @@ def create_app(testing: bool = False, auth_middleware=None) -> FastAPI:
         allow_headers=["*"],  # Permitir todos los headers
     )
 
-    app.include_router(user.router)
     app.include_router(email.router)
-    app.include_router(email.tenant_emails_router)
-    app.include_router(tenant.router)
     app.include_router(provider.router)
 
     register_exception_handlers(app)

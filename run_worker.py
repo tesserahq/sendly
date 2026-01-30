@@ -1,5 +1,6 @@
 import os
 import sys
+import socket
 
 from app.core.celery_app import celery_app
 
@@ -12,12 +13,18 @@ def main():
     concurrency = os.getenv("CELERY_CONCURRENCY", "1" if pool == "solo" else "4")
     queues = os.getenv("CELERY_QUEUES", "sendly")  # Default to sendly queue
 
+    # Generate a unique worker node name so that multiple workers can run without collisions.
+    hostname = socket.gethostname()
+    pid = os.getpid()
+    nodename = os.getenv("CELERY_NODENAME", f"sendly-worker@{hostname}-{pid}")
+
     argv = [
         "worker",
         f"--loglevel={loglevel}",
         f"--pool={pool}",
         f"--concurrency={concurrency}",
         f"--queues={queues}",  # Always specify queues
+        f"--hostname={nodename}",  # Unique node name to avoid duplicate warnings
     ]
     celery_app.worker_main(argv)
 

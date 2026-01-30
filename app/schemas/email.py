@@ -79,14 +79,14 @@ class EmailBase(BaseModel):
     status: str
     """Email status (e.g., 'pending', 'sent', 'delivered', 'failed'). Required field."""
 
-    provider_id: UUID
+    provider: str
     """Provider ID used to send the email. Required field."""
 
     provider_message_id: Optional[str] = None
     """Provider message ID."""
 
-    tenant_id: UUID
-    """Tenant ID that owns this email. Required field."""
+    project_id: Optional[UUID] = None
+    """Project ID that owns this email. Optional field."""
 
 
 class EmailCreate(EmailBase):

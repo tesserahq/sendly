@@ -1,7 +1,6 @@
 import pytest
 from uuid import uuid4
 from datetime import datetime
-from sqlalchemy.orm import Session
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.user_service import UserService
@@ -19,7 +18,7 @@ def sample_user_data():
 
 
 @pytest.fixture
-def sample_user(db: Session, sample_user_data):
+def sample_user(db, sample_user_data):
     user = User(**sample_user_data)
     db.add(user)
     db.commit()
@@ -27,7 +26,7 @@ def sample_user(db: Session, sample_user_data):
     return user
 
 
-def test_create_user(db: Session, sample_user_data):
+def test_create_user(db, sample_user_data):
     # Create user
     user_create = UserCreate(**sample_user_data)
     user = UserService(db).create_user(user_create)
@@ -49,7 +48,7 @@ def test_create_user(db: Session, sample_user_data):
     assert user.updated_at is not None
 
 
-def test_get_user(db: Session, sample_user):
+def test_get_user(db, sample_user):
     # Get user
     retrieved_user = UserService(db).get_user(sample_user.id)
 
@@ -59,7 +58,7 @@ def test_get_user(db: Session, sample_user):
     assert retrieved_user.email == sample_user.email
 
 
-def test_get_user_by_email(db: Session, sample_user):
+def test_get_user_by_email(db, sample_user):
     # Get user by email
     retrieved_user = UserService(db).get_user_by_email(sample_user.email)
 
@@ -69,7 +68,7 @@ def test_get_user_by_email(db: Session, sample_user):
     assert retrieved_user.email == sample_user.email
 
 
-def test_get_user_by_username(db: Session, sample_user):
+def test_get_user_by_username(db, sample_user):
     # Get user by username
     retrieved_user = UserService(db).get_user_by_username(sample_user.username)
 
@@ -79,7 +78,7 @@ def test_get_user_by_username(db: Session, sample_user):
     assert retrieved_user.username == sample_user.username
 
 
-def test_get_users(db: Session, sample_user):
+def test_get_users(db, sample_user):
     # Get all users
     users = UserService(db).get_users()
 
@@ -88,7 +87,7 @@ def test_get_users(db: Session, sample_user):
     assert any(u.id == sample_user.id for u in users)
 
 
-def test_update_user(db: Session, sample_user):
+def test_update_user(db, sample_user):
     # Update data
     update_data = {
         "email": "updated@example.com",
@@ -113,7 +112,7 @@ def test_update_user(db: Session, sample_user):
     )
 
 
-def test_verify_user(db: Session, sample_user):
+def test_verify_user(db, sample_user):
     # Verify user
     verified_user = UserService(db).verify_user(sample_user.id)
 
@@ -124,7 +123,7 @@ def test_verify_user(db: Session, sample_user):
     assert isinstance(verified_user.verified_at, datetime)
 
 
-def test_delete_user(db: Session, sample_user):
+def test_delete_user(db, sample_user):
     user_service = UserService(db)
     # Delete user
     success = user_service.delete_user(sample_user.id)
@@ -135,7 +134,7 @@ def test_delete_user(db: Session, sample_user):
     assert deleted_user is None
 
 
-def test_user_not_found_cases(db: Session):
+def test_user_not_found_cases(db):
     user_service = UserService(db)
     # Test various not found cases
     non_existent_id = uuid4()
@@ -159,7 +158,7 @@ def test_user_not_found_cases(db: Session):
 
 
 # Test search method with dynamic filters
-def test_search_users_with_filters(db: Session, sample_user):
+def test_search_users_with_filters(db, sample_user):
     # Search using ilike filter on first name
     filters = {"first_name": {"operator": "ilike", "value": "%test%"}}
     results = UserService(db).search(filters)

@@ -42,64 +42,70 @@ class EmailService(SoftDeleteService[Email]):
 
     def get_emails(self, skip: int = 0, limit: int = 100) -> List[Email]:
         """
-        Get a list of emails with pagination.
+        Get all emails with pagination.
 
         Args:
             skip: Number of records to skip
             limit: Maximum number of records to return
-
-        Returns:
-            List[Email]: List of emails
         """
         return self.db.query(Email).offset(skip).limit(limit).all()
 
-    def get_emails_by_tenant(
-        self, tenant_id: UUID, skip: int = 0, limit: int = 100
+    def get_emails_query(self):
+        """
+        Get a query for all emails.
+
+        Returns:
+            Query[Email]: SQLAlchemy query object for all emails
+        """
+        return self.db.query(Email).order_by(Email.created_at.desc())
+
+    def get_emails_by_project(
+        self, project_id: UUID, skip: int = 0, limit: int = 100
     ) -> List[Email]:
         """
-        Get all emails for a specific tenant.
+        Get all emails for a specific project.
 
         Args:
-            tenant_id: The ID of the tenant
+            project_id: The ID of the project
             skip: Number of records to skip
             limit: Maximum number of records to return
 
         Returns:
-            List[Email]: List of emails for the tenant
+            List[Email]: List of emails for the project
         """
         return (
             self.db.query(Email)
-            .filter(Email.tenant_id == tenant_id)
+            .filter(Email.project_id == project_id)
             .offset(skip)
             .limit(limit)
             .all()
         )
 
-    def get_emails_by_tenant_query(self, tenant_id: UUID):
+    def get_emails_by_project_query(self, project_id: UUID):
         """
-        Get a query for all emails for a specific tenant.
+        Get a query for all emails for a specific project.
         This is useful for pagination with fastapi-pagination.
 
         Args:
-            tenant_id: The ID of the tenant
+            project_id: The ID of the project
 
         Returns:
-            Query: SQLAlchemy query object for emails of the tenant
+            Query: SQLAlchemy query object for emails of the project
         """
         return (
             self.db.query(Email)
-            .filter(Email.tenant_id == tenant_id)
+            .filter(Email.project_id == project_id)
             .order_by(Email.created_at.desc())
         )
 
     def get_emails_by_provider(
-        self, provider_id: UUID, skip: int = 0, limit: int = 100
+        self, provider: str, skip: int = 0, limit: int = 100
     ) -> List[Email]:
         """
         Get all emails sent through a specific provider.
 
         Args:
-            provider_id: The ID of the provider
+            provider: The provider
             skip: Number of records to skip
             limit: Maximum number of records to return
 
@@ -108,7 +114,7 @@ class EmailService(SoftDeleteService[Email]):
         """
         return (
             self.db.query(Email)
-            .filter(Email.provider_id == provider_id)
+            .filter(Email.provider == provider)
             .offset(skip)
             .limit(limit)
             .all()

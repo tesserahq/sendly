@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable
 
-from app.providers.base import EmailEvent, EmailSendRequest, EmailSendResult
+from app.providers.base import EmailEvent, EmailCreateRequest, EmailSendResult
 
 # ---------------------------
 # Provider Interface
@@ -11,14 +11,20 @@ from app.providers.base import EmailEvent, EmailSendRequest, EmailSendResult
 
 
 class EmailProvider(ABC):
-    """Strategy interface for providers."""
+    """Strategy interface for providers. Subclasses must set provider_id and provider_name."""
+
+    provider_id: str = ""
+    provider_name: str = ""
+    enabled: bool = True
+    default: bool = False
+    site: str | None = None
 
     def __init__(self, settings: dict):
         self.settings = settings
 
     @abstractmethod
-    def send_email(self, req: EmailSendRequest) -> EmailSendResult:
-        """Translate EmailSendRequest -> provider API call -> EmailSendResult."""
+    def send_email(self, req: EmailCreateRequest) -> EmailSendResult:
+        """Translate EmailCreateRequest -> provider API call -> EmailSendResult."""
         raise NotImplementedError
 
     @abstractmethod
