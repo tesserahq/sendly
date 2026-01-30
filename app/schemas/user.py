@@ -37,6 +37,9 @@ class UserBase(BaseModel):
     verified_at: Optional[datetime] = None
     """Timestamp when the user's account was verified."""
 
+    service_account: bool = False
+    """Whether the user is a service account. Defaults to False."""
+
 
 class UserCreate(UserBase):
     """Schema for creating a new user. Inherits all fields from UserBase."""

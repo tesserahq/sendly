@@ -35,6 +35,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     verified = Column(Boolean, default=False)
     verified_at = Column(DateTime, nullable=True)
     external_id = Column(String, nullable=True)
+    service_account = Column(Boolean, default=False)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
