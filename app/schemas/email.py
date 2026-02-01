@@ -150,10 +150,8 @@ class Email(EmailInDB):
     pass
 
 
-class EmailWithEvents(EmailInDB):
-    """Schema for email data with associated events."""
+class EmailWithEventsResponse(EmailInDB):
+    """Schema for email data with associated events response."""
 
     events: list[EmailEvent] = []
     """List of events associated with this email."""
-
-    model_config = {"from_attributes": True}

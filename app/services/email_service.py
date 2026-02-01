@@ -1,7 +1,7 @@
-import datetime
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from app.models.email import Email
 from app.models.email_event import EmailEvent
 from app.schemas.email import (
@@ -39,6 +39,23 @@ class EmailService(SoftDeleteService[Email]):
             Optional[Email]: The email or None if not found
         """
         return self.db.query(Email).filter(Email.id == email_id).first()
+
+    def get_email_with_events(self, email_id: UUID) -> Optional[Email]:
+        """
+        Get a single email by ID with its events eager-loaded.
+
+        Args:
+            email_id: The ID of the email to retrieve
+
+        Returns:
+            Optional[Email]: The email with events populated, or None if not found
+        """
+        return (
+            self.db.query(Email)
+            .options(selectinload(Email.events))
+            .filter(Email.id == email_id)
+            .first()
+        )
 
     def get_emails(self, skip: int = 0, limit: int = 100) -> List[Email]:
         """
@@ -140,6 +157,28 @@ class EmailService(SoftDeleteService[Email]):
             .offset(skip)
             .limit(limit)
             .all()
+        )
+
+    def get_email_by_provider_message_id(
+        self, provider_message_id: str, provider: str
+    ) -> Optional[Email]:
+        """
+        Get an email by its provider message ID and provider.
+
+        Args:
+            provider_message_id: The provider's message ID
+            provider: The provider identifier (e.g., 'postmark', 'sendgrid')
+
+        Returns:
+            Optional[Email]: The email or None if not found
+        """
+        return (
+            self.db.query(Email)
+            .filter(
+                Email.provider_message_id == provider_message_id,
+                Email.provider == provider,
+            )
+            .first()
         )
 
     def create_email(self, email: EmailCreate) -> Email:

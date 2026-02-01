@@ -13,9 +13,10 @@ from app.services.email_service import EmailService
 from app.auth.rbac import build_rbac_dependencies
 from fastapi import Request
 from typing import Annotated
-from app.routers.utils.dependencies import get_email_by_id
+from app.routers.utils.dependencies import get_email_with_events_by_id
 import json
 from json import JSONDecodeError
+from app.schemas.email import EmailWithEventsResponse
 
 router = APIRouter(
     prefix="/emails",
@@ -67,11 +68,11 @@ def create_email(
     return email
 
 
-@router.get("/{email_id}", response_model=Email)
+@router.get("/{email_id}", response_model=EmailWithEventsResponse)
 def get_email(
-    email: Email = Depends(get_email_by_id),
+    email: Email = Depends(get_email_with_events_by_id),
     _authorized: bool = Depends(rbac["read"]),
-) -> Email:
+) -> EmailWithEventsResponse:
     """
     Get a specific email by ID.
 

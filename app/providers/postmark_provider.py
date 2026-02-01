@@ -65,7 +65,7 @@ class PostmarkProvider(EmailProvider):
             occurred = datetime.now(timezone.utc)
 
         yield EmailEvent(
-            project_id="__resolve_from_routing__",
+            project_id=None,  # Will be resolved from the email record
             provider_name="postmark",
             provider_message_id=str(msg_id),
             type=_map_pm_type(record_type, payload.get("Type")),
