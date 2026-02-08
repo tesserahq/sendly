@@ -803,14 +803,14 @@ standard-no-fastapi-cloud-cli = ["email-validator (>=2.0.0)", "fastapi-cli[stand
 
 [[package]]
 name = "fastapi-pagination"
-version = "0.15.9"
+version = "0.15.10"
 description = "FastAPI pagination"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "fastapi_pagination-0.15.9-py3-none-any.whl", hash = "sha256:21f5ab465fb75e21a3454234603071711b679b1973ba2428e7a63db2221abc09"},
-    {file = "fastapi_pagination-0.15.9.tar.gz", hash = "sha256:e24b0419a6077a75f38970ada2a57e277845fb177cc2da7300374ee8be32e8b5"},
+    {file = "fastapi_pagination-0.15.10-py3-none-any.whl", hash = "sha256:d50071ebc93b519391f16ff6c3ba9e3603bd659963fe6774ba2f4d5037e17fd8"},
+    {file = "fastapi_pagination-0.15.10.tar.gz", hash = "sha256:0ba7d4f795059a91a9e89358af129f2114876452c1defaf198ea8e3419e9a3cd"},
 ]
 
 [package.dependencies]
