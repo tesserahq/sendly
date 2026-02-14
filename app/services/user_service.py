@@ -22,9 +22,6 @@ class UserService(SoftDeleteService[User]):
     def get_user_by_external_id(self, external_id: str) -> Optional[User]:
         return self.db.query(User).filter(User.external_id == external_id).first()
 
-    def get_user_by_username(self, username: str) -> Optional[User]:
-        return self.db.query(User).filter(User.username == username).first()
-
     def get_users(self, skip: int = 0, limit: int = 100) -> List[User]:
         return self.db.query(User).offset(skip).limit(limit).all()
 

@@ -13,9 +13,6 @@ class UserBase(BaseModel):
     email: Optional[EmailStr] = None
     """User's email address. Must be a valid email format."""
 
-    username: Optional[str] = None
-    """User's unique username. Can be used for login or display."""
-
     avatar_url: Optional[str] = None
     """URL to the user's profile picture or avatar."""
 
@@ -59,9 +56,6 @@ class UserUpdate(BaseModel):
 
     email: Optional[EmailStr] = None
     """Updated email address. Must be a valid email format."""
-
-    username: Optional[str] = None
-    """Updated username."""
 
     avatar_url: Optional[str] = None
     """Updated avatar URL."""

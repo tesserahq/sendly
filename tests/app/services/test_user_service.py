@@ -10,7 +10,6 @@ from app.services.user_service import UserService
 def sample_user_data():
     return {
         "email": "test@example.com",
-        "username": "testuser",
         "first_name": "Test",
         "last_name": "User",
         "provider": "google",
@@ -34,7 +33,6 @@ def test_create_user(db, sample_user_data):
     # Assertions
     assert user.id is not None
     assert user.email == sample_user_data["email"]
-    assert user.username == sample_user_data["username"]
     assert user.first_name == sample_user_data["first_name"]
     assert user.last_name == sample_user_data["last_name"]
     assert (
@@ -66,16 +64,6 @@ def test_get_user_by_email(db, sample_user):
     assert retrieved_user is not None
     assert retrieved_user.id == sample_user.id
     assert retrieved_user.email == sample_user.email
-
-
-def test_get_user_by_username(db, sample_user):
-    # Get user by username
-    retrieved_user = UserService(db).get_user_by_username(sample_user.username)
-
-    # Assertions
-    assert retrieved_user is not None
-    assert retrieved_user.id == sample_user.id
-    assert retrieved_user.username == sample_user.username
 
 
 def test_get_users(db, sample_user):
@@ -145,9 +133,6 @@ def test_user_not_found_cases(db):
     # Get by non-existent email
     assert user_service.get_user_by_email("nonexistent@example.com") is None
 
-    # Get by non-existent username
-    assert user_service.get_user_by_username("nonexistent") is None
-
     # Update non-existent user
     update_data = {"email": "updated@example.com"}
     user_update = UserUpdate(**update_data)
@@ -174,7 +159,7 @@ def test_search_users_with_filters(db, sample_user):
     assert results[0].id == sample_user.id
 
     # Search with no match
-    filters = {"username": {"operator": "==", "value": "nonexistentuser"}}
+    filters = {"email": {"operator": "==", "value": "nonexistent@example.com"}}
     results = UserService(db).search(filters)
 
     assert len(results) == 0
