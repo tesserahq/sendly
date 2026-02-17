@@ -2662,7 +2662,7 @@ urllib3 = ">=1.26.0"
 type = "git"
 url = "https://github.com/tesserahq/tessera-sdk-py.git"
 reference = "main"
-resolved_reference = "0f7c53a6dc2ec7bffd4089175f6eceb7c9bc8583"
+resolved_reference = "86dfac328a4dc3c1baa398a10507788d433f4e90"
 
 [[package]]
 name = "text-unidecode"
