@@ -1,0 +1,3 @@
+[submodule ".cursor"]
+	path = .cursor
+	url = https://github.com/tesserahq/fastapi-cursor-rules.git
