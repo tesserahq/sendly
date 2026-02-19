@@ -22,7 +22,7 @@ class UserService(SoftDeleteService[User]):
 
     def get_user_by_external_id(self, external_id: str) -> Optional[User]:
         return self.db.query(User).filter(User.external_id == external_id).first()
-    
+
     def get_user_by_id_or_external_id(self, id: str) -> User | None:
         try:
             uuid_id = UUID(str(id))
