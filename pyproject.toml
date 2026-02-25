@@ -51,7 +51,7 @@ cryptography = "^46.0.3"
 fernet = "^1.0.1"
 celery = "^5.5.2"
 rollbar = "^1.3.0"
-redis = ">=5.0.1,<7.2.0"
+redis = ">=7.2.1,<8.0.0"
 fastapi-pagination = "^0.15.0"
 # tessera-sdk = { path = "../tessera-sdk-py/", develop = true }
 tessera-sdk = { git = "https://github.com/tesserahq/tessera-sdk-py.git", branch = "main" }
