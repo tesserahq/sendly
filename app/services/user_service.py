@@ -6,7 +6,6 @@ from app.schemas.user import UserCreate, UserUpdate, UserOnboard
 from datetime import datetime, timezone
 from app.services.soft_delete_service import SoftDeleteService
 from sqlalchemy import or_
-
 from app.utils.db.filtering import apply_filters
 
 
