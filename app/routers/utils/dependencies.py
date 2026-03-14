@@ -2,7 +2,7 @@ from uuid import UUID
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.services.email_service import EmailService
+from app.repositories.email_repository import EmailRepository
 from app.schemas.email import Email
 
 
@@ -22,7 +22,7 @@ def get_email_by_id(
     Raises:
         HTTPException: If the email is not found
     """
-    email = EmailService(db).get_email(email_id)
+    email = EmailRepository(db).get_email(email_id)
     if email is None:
         raise HTTPException(status_code=404, detail="Email not found")
     return email
@@ -44,7 +44,7 @@ def get_email_with_events_by_id(
     Raises:
         HTTPException: If the email is not found
     """
-    email = EmailService(db).get_email_with_events(email_id)
+    email = EmailRepository(db).get_email_with_events(email_id)
     if email is None:
         raise HTTPException(status_code=404, detail="Email not found")
     return email

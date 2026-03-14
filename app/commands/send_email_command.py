@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.models.email import Email
 from datetime import datetime
-from app.services.email_service import EmailService
+from app.repositories.email_repository import EmailRepository
 from app.schemas.email import EmailCreate, EmailEventCreate, EmailUpdate
 from app.constants.email import EmailStatus
 from app.providers.base import EmailCreateRequest
@@ -14,7 +14,7 @@ from app.providers.registry import get_default_provider
 class SendEmailCommand:
     def __init__(self, db: Session):
         self.db = db
-        self.email_service = EmailService(db)
+        self.email_service = EmailRepository(db)
 
     def execute(self, req: EmailCreateRequest) -> Email:
         """

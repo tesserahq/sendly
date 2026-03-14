@@ -10,16 +10,16 @@ from app.schemas.email import (
     EmailEventCreate,
     EmailEventUpdate,
 )
-from app.services.soft_delete_service import SoftDeleteService
+from app.repositories.soft_delete_repository import SoftDeleteRepository
 from app.utils.db.filtering import apply_filters
 
 
-class EmailService(SoftDeleteService[Email]):
-    """Service class for managing email and email event CRUD operations."""
+class EmailRepository(SoftDeleteRepository[Email]):
+    """Repository class for managing email and email event CRUD operations."""
 
     def __init__(self, db: Session):
         """
-        Initialize the email service.
+        Initialize the email repository.
 
         Args:
             db: Database session

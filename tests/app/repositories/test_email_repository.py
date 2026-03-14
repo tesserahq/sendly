@@ -9,7 +9,7 @@ from app.schemas.email import (
     EmailEventCreate,
     EmailEventUpdate,
 )
-from app.services.email_service import EmailService
+from app.repositories.email_repository import EmailRepository
 
 # ==================== Email Fixtures ====================
 
@@ -66,7 +66,7 @@ def test_create_email(db, sample_email_data):
     """Test creating a new email."""
     # Create email
     email_create = EmailCreate(**sample_email_data)
-    email = EmailService(db).create_email(email_create)
+    email = EmailRepository(db).create_email(email_create)
 
     # Assertions
     assert email.id is not None
@@ -86,7 +86,7 @@ def test_create_email(db, sample_email_data):
 def test_get_email(db, sample_email):
     """Test getting an email by ID."""
     # Get email
-    retrieved_email = EmailService(db).get_email(sample_email.id)
+    retrieved_email = EmailRepository(db).get_email(sample_email.id)
 
     # Assertions
     assert retrieved_email is not None
@@ -98,7 +98,7 @@ def test_get_email(db, sample_email):
 def test_get_emails(db, sample_email):
     """Test getting a list of emails."""
     # Get all emails
-    emails = EmailService(db).get_emails()
+    emails = EmailRepository(db).get_emails()
 
     # Assertions
     assert len(emails) >= 1
@@ -107,7 +107,7 @@ def test_get_emails(db, sample_email):
 
 def test_get_emails_with_pagination(db):
     """Test getting emails with pagination."""
-    email_service = EmailService(db)
+    email_repository = EmailRepository(db)
 
     # Create additional emails
     for i in range(5):
@@ -120,11 +120,11 @@ def test_get_emails_with_pagination(db):
             provider="postmark",
             project_id=None,
         )
-        email_service.create_email(email_create)
+        email_repository.create_email(email_create)
 
     # Test pagination
-    first_page = email_service.get_emails(skip=0, limit=2)
-    second_page = email_service.get_emails(skip=2, limit=2)
+    first_page = email_repository.get_emails(skip=0, limit=2)
+    second_page = email_repository.get_emails(skip=2, limit=2)
 
     # Assertions
     assert len(first_page) == 2
@@ -134,7 +134,7 @@ def test_get_emails_with_pagination(db):
 
 def test_get_emails_by_provider(db):
     """Test getting emails sent through a specific provider."""
-    email_service = EmailService(db)
+    email_repository = EmailRepository(db)
 
     # Create emails for the first provider
     for i in range(3):
@@ -147,10 +147,10 @@ def test_get_emails_by_provider(db):
             provider="postmark",
             project_id=None,
         )
-        email_service.create_email(email_create)
+        email_repository.create_email(email_create)
 
     # Get emails for each provider
-    provider1_emails = email_service.get_emails_by_provider("postmark")
+    provider1_emails = email_repository.get_emails_by_provider("postmark")
 
     # Assertions
     assert len(provider1_emails) == 3
@@ -159,7 +159,7 @@ def test_get_emails_by_provider(db):
 
 def test_get_emails_by_status(db):
     """Test getting emails with a specific status."""
-    email_service = EmailService(db)
+    email_repository = EmailRepository(db)
 
     # Create emails with different statuses
     for status in ["pending", "sent", "delivered", "failed"]:
@@ -173,13 +173,13 @@ def test_get_emails_by_status(db):
                 provider="postmark",
                 project_id=None,
             )
-            email_service.create_email(email_create)
+            email_repository.create_email(email_create)
 
     # Get emails by status
-    pending_emails = email_service.get_emails_by_status("pending")
-    sent_emails = email_service.get_emails_by_status("sent")
-    delivered_emails = email_service.get_emails_by_status("delivered")
-    failed_emails = email_service.get_emails_by_status("failed")
+    pending_emails = email_repository.get_emails_by_status("pending")
+    sent_emails = email_repository.get_emails_by_status("sent")
+    delivered_emails = email_repository.get_emails_by_status("delivered")
+    failed_emails = email_repository.get_emails_by_status("failed")
 
     # Assertions
     assert len(pending_emails) == 2
@@ -200,7 +200,7 @@ def test_update_email(db, sample_email):
     email_update = EmailUpdate(**update_data)
 
     # Update email
-    updated_email = EmailService(db).update_email(sample_email.id, email_update)
+    updated_email = EmailRepository(db).update_email(sample_email.id, email_update)
 
     # Assertions
     assert updated_email is not None
@@ -219,7 +219,7 @@ def test_update_email_with_error(db, sample_email):
     email_update = EmailUpdate(**update_data)
 
     # Update email
-    updated_email = EmailService(db).update_email(sample_email.id, email_update)
+    updated_email = EmailRepository(db).update_email(sample_email.id, email_update)
 
     # Assertions
     assert updated_email is not None
@@ -229,48 +229,48 @@ def test_update_email_with_error(db, sample_email):
 
 def test_delete_email(db, sample_email):
     """Test soft deleting an email."""
-    email_service = EmailService(db)
+    email_repository = EmailRepository(db)
 
     # Delete email
-    success = email_service.delete_email(sample_email.id)
+    success = email_repository.delete_email(sample_email.id)
 
     # Assertions
     assert success is True
-    deleted_email = email_service.get_email(sample_email.id)
+    deleted_email = email_repository.get_email(sample_email.id)
     assert deleted_email is None
 
 
 def test_email_not_found_cases(db):
     """Test various not found cases."""
-    email_service = EmailService(db)
+    email_repository = EmailRepository(db)
 
     # Test various not found cases
     non_existent_id = uuid4()
 
     # Get non-existent email
-    assert email_service.get_email(non_existent_id) is None
+    assert email_repository.get_email(non_existent_id) is None
 
     # Update non-existent email
     update_data = {"status": "sent"}
     email_update = EmailUpdate(**update_data)
-    assert email_service.update_email(non_existent_id, email_update) is None
+    assert email_repository.update_email(non_existent_id, email_update) is None
 
     # Delete non-existent email
-    assert email_service.delete_email(non_existent_id) is False
+    assert email_repository.delete_email(non_existent_id) is False
 
 
 def test_search_emails_with_filters(db, sample_email):
     """Test searching emails with dynamic filters."""
     # Search using exact match on status
     filters = {"status": "pending"}
-    results = EmailService(db).search(filters)
+    results = EmailRepository(db).search(filters)
 
     assert isinstance(results, list)
     assert any(email.id == sample_email.id for email in results)
 
     # Search using ilike on subject
     filters = {"subject": {"operator": "ilike", "value": "%Test%"}}
-    results = EmailService(db).search(filters)
+    results = EmailRepository(db).search(filters)
 
     assert isinstance(results, list)
     assert any(email.id == sample_email.id for email in results)
@@ -283,7 +283,7 @@ def test_create_email_event(db, sample_email_event_data):
     """Test creating a new email event."""
     # Create email event
     event_create = EmailEventCreate(**sample_email_event_data)
-    event = EmailService(db).create_email_event(event_create)
+    event = EmailRepository(db).create_email_event(event_create)
 
     # Assertions
     assert event.id is not None
@@ -298,7 +298,7 @@ def test_create_email_event(db, sample_email_event_data):
 def test_get_email_event(db, sample_email_event):
     """Test getting an email event by ID."""
     # Get email event
-    retrieved_event = EmailService(db).get_email_event(sample_email_event.id)
+    retrieved_event = EmailRepository(db).get_email_event(sample_email_event.id)
 
     # Assertions
     assert retrieved_event is not None
@@ -309,7 +309,7 @@ def test_get_email_event(db, sample_email_event):
 
 def test_get_email_events(db, sample_email):
     """Test getting all events for an email."""
-    email_service = EmailService(db)
+    email_repository = EmailRepository(db)
 
     # Create multiple events for the email
     event_types = ["sent", "delivered", "opened", "clicked"]
@@ -320,10 +320,10 @@ def test_get_email_events(db, sample_email):
             event_timestamp=datetime.now(timezone.utc),
             details={"event": event_type},
         )
-        email_service.create_email_event(event_create)
+        email_repository.create_email_event(event_create)
 
     # Get all events
-    events = email_service.get_email_events(sample_email.id)
+    events = email_repository.get_email_events(sample_email.id)
 
     # Assertions
     assert len(events) == 4
@@ -334,11 +334,11 @@ def test_get_email_events(db, sample_email):
 
 def test_get_email_events_by_type(db, sample_email):
     """Test getting events of a specific type for an email."""
-    email_service = EmailService(db)
+    email_repository = EmailRepository(db)
 
     # Create multiple events with different types
     for i in range(3):
-        email_service.create_email_event(
+        email_repository.create_email_event(
             EmailEventCreate(
                 email_id=sample_email.id,
                 event_type="delivered",
@@ -348,7 +348,7 @@ def test_get_email_events_by_type(db, sample_email):
         )
 
     for i in range(2):
-        email_service.create_email_event(
+        email_repository.create_email_event(
             EmailEventCreate(
                 email_id=sample_email.id,
                 event_type="opened",
@@ -358,10 +358,10 @@ def test_get_email_events_by_type(db, sample_email):
         )
 
     # Get events by type
-    delivered_events = email_service.get_email_events_by_type(
+    delivered_events = email_repository.get_email_events_by_type(
         sample_email.id, "delivered"
     )
-    opened_events = email_service.get_email_events_by_type(sample_email.id, "opened")
+    opened_events = email_repository.get_email_events_by_type(sample_email.id, "opened")
 
     # Assertions
     assert len(delivered_events) == 3
@@ -382,7 +382,7 @@ def test_update_email_event(db, sample_email_event):
     event_update = EmailEventUpdate(**update_data)
 
     # Update email event
-    updated_event = EmailService(db).update_email_event(
+    updated_event = EmailRepository(db).update_email_event(
         sample_email_event.id, event_update
     )
 
@@ -395,43 +395,43 @@ def test_update_email_event(db, sample_email_event):
 
 def test_delete_email_event(db, sample_email_event):
     """Test deleting an email event."""
-    email_service = EmailService(db)
+    email_repository = EmailRepository(db)
 
     # Delete email event
-    success = email_service.delete_email_event(sample_email_event.id)
+    success = email_repository.delete_email_event(sample_email_event.id)
 
     # Assertions
     assert success is True
-    deleted_event = email_service.get_email_event(sample_email_event.id)
+    deleted_event = email_repository.get_email_event(sample_email_event.id)
     assert deleted_event is None
 
 
 def test_email_event_not_found_cases(db, sample_email):
     """Test various not found cases for email events."""
-    email_service = EmailService(db)
+    email_repository = EmailRepository(db)
 
     # Test various not found cases
     non_existent_id = uuid4()
 
     # Get non-existent email event
-    assert email_service.get_email_event(non_existent_id) is None
+    assert email_repository.get_email_event(non_existent_id) is None
 
     # Update non-existent email event
     update_data = {"event_type": "delivered"}
     event_update = EmailEventUpdate(**update_data)
-    assert email_service.update_email_event(non_existent_id, event_update) is None
+    assert email_repository.update_email_event(non_existent_id, event_update) is None
 
     # Delete non-existent email event
-    assert email_service.delete_email_event(non_existent_id) is False
+    assert email_repository.delete_email_event(non_existent_id) is False
 
 
 def test_search_email_events_with_filters(db, sample_email):
     """Test searching email events with dynamic filters."""
-    email_service = EmailService(db)
+    email_repository = EmailRepository(db)
 
     # Create events with different types
     for event_type in ["sent", "delivered", "bounced"]:
-        email_service.create_email_event(
+        email_repository.create_email_event(
             EmailEventCreate(
                 email_id=sample_email.id,
                 event_type=event_type,
@@ -442,7 +442,7 @@ def test_search_email_events_with_filters(db, sample_email):
 
     # Search using exact match on event_type
     filters = {"event_type": "delivered"}
-    results = email_service.search_email_events(filters)
+    results = email_repository.search_email_events(filters)
 
     assert isinstance(results, list)
     assert len(results) >= 1
@@ -450,7 +450,7 @@ def test_search_email_events_with_filters(db, sample_email):
 
     # Search by email_id
     filters = {"email_id": sample_email.id}
-    results = email_service.search_email_events(filters)
+    results = email_repository.search_email_events(filters)
 
     assert isinstance(results, list)
     assert len(results) >= 3
