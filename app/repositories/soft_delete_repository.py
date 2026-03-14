@@ -8,17 +8,17 @@ from app.db import Base
 T = TypeVar("T", bound=Base)
 
 
-class SoftDeleteService(Generic[T]):
+class SoftDeleteRepository(Generic[T]):
     """
-    Generic service class that provides soft delete functionality for any model.
+    Generic repository class that provides soft delete functionality for any model.
 
-    This class can be inherited by other services to add soft delete capabilities
+    This class can be inherited by other repositories to add soft delete capabilities
     without duplicating code.
     """
 
     def __init__(self, db: Session, model_class: Type[T]):
         """
-        Initialize the soft delete service.
+        Initialize the soft delete repository.
 
         Args:
             db: Database session

@@ -58,10 +58,10 @@ def create_app(testing: bool = False, auth_middleware=None) -> FastAPI:
         from tessera_sdk.middleware.authentication import AuthenticationMiddleware
         from tessera_sdk.middleware.user_onboarding import UserOnboardingMiddleware
         from tessera_sdk.utils.service_factory import create_service_factory
-        from app.services.user_service import UserService
+        from app.repositories.user_repository import UserRepository
 
-        # Create service factory for UserService
-        user_service_factory = create_service_factory(UserService, db_manager)
+        # Create service factory for UserRepository
+        user_service_factory = create_service_factory(UserRepository, db_manager)
 
         app.add_middleware(
             UserOnboardingMiddleware,

@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 
 from app.providers.email_provider import EmailProvider
 from app.providers.base import EmailEvent
-from app.services.email_service import EmailService
+from app.repositories.email_repository import EmailRepository
 from app.schemas.email import EmailEventCreate
 
 
@@ -30,7 +30,7 @@ class ProcessDeliveryEventsCommand:
             db: Database session
         """
         self.db = db
-        self.email_service = EmailService(db)
+        self.email_service = EmailRepository(db)
 
     def execute(
         self,

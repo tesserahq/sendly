@@ -9,7 +9,7 @@ from app.db import get_db
 from app.commands.send_email_command import SendEmailCommand
 from app.providers.base import EmailCreateRequest
 from app.schemas.email import Email
-from app.services.email_service import EmailService
+from app.repositories.email_repository import EmailRepository
 from app.auth.rbac import build_rbac_dependencies
 from fastapi import Request
 from typing import Annotated
@@ -114,10 +114,10 @@ def list_emails(
         HTTPException: If the project is not found
     """
 
-    email_service = EmailService(db)
+    email_repository = EmailRepository(db)
     if project_id:
-        query = email_service.get_emails_by_project_query(project_id)
+        query = email_repository.get_emails_by_project_query(project_id)
     else:
-        query = email_service.get_emails_query()
+        query = email_repository.get_emails_query()
 
     return paginate(query, params)
