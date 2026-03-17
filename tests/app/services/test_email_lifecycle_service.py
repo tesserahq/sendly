@@ -72,7 +72,9 @@ class TestRecordSendFailure:
         service, repo = _make_service()
         email = _make_email(status=EmailStatus.QUEUED)
 
-        service.record_send_failure(email=email, error_code="429", error_message="rate limited")
+        service.record_send_failure(
+            email=email, error_code="429", error_message="rate limited"
+        )
 
         repo.update_email.assert_called_once()
         update_arg = repo.update_email.call_args[0][1]
@@ -83,7 +85,9 @@ class TestRecordSendFailure:
         service, repo = _make_service()
         email = _make_email(status=EmailStatus.QUEUED)
 
-        service.record_send_failure(email=email, error_code="429", error_message="rate limited")
+        service.record_send_failure(
+            email=email, error_code="429", error_message="rate limited"
+        )
 
         repo.create_email_event.assert_called_once()
         event_arg = repo.create_email_event.call_args[0][0]

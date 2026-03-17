@@ -73,7 +73,9 @@ class TestProcessDeliveryEventsCommand:
 
         # Verify Email.status was advanced to DELIVERED
         db.expire_all()
-        updated_email = db.query(Email).filter(Email.provider_message_id == provider_msg_id).first()
+        updated_email = (
+            db.query(Email).filter(Email.provider_message_id == provider_msg_id).first()
+        )
         assert updated_email.status == EmailStatus.DELIVERED
 
     def test_execute_handles_missing_email(self, db):
@@ -191,7 +193,15 @@ class TestProcessDeliveryEventsCommand:
 
         # Verify Email.status was advanced for each event
         db.expire_all()
-        email1 = db.query(Email).filter(Email.provider_message_id == provider_msg_id_1).first()
-        email2 = db.query(Email).filter(Email.provider_message_id == provider_msg_id_2).first()
+        email1 = (
+            db.query(Email)
+            .filter(Email.provider_message_id == provider_msg_id_1)
+            .first()
+        )
+        email2 = (
+            db.query(Email)
+            .filter(Email.provider_message_id == provider_msg_id_2)
+            .first()
+        )
         assert email1.status == EmailStatus.DELIVERED
         assert email2.status == EmailStatus.OPENED

@@ -11,7 +11,6 @@ from app.models.email import Email
 from app.repositories.email_repository import EmailRepository
 from app.schemas.email import EmailEventCreate, EmailUpdate
 
-
 # Maps inbound webhook event_type strings to their corresponding Email.status value.
 # Not all event types map to a status change (unknown types are silently ignored).
 _WEBHOOK_EVENT_TO_STATUS: dict[str, str] = {
