@@ -71,6 +71,13 @@ class TestProcessDeliveryEventsCommand:
         mock_provider.verify_webhook.assert_called_once()
         mock_provider.parse_webhook.assert_called_once()
 
+        # Verify Email.status was advanced to DELIVERED
+        db.expire_all()
+        updated_email = (
+            db.query(Email).filter(Email.provider_message_id == provider_msg_id).first()
+        )
+        assert updated_email.status == EmailStatus.DELIVERED
+
     def test_execute_handles_missing_email(self, db):
         """Command handles events for emails that don't exist."""
         # Mock provider
@@ -183,3 +190,18 @@ class TestProcessDeliveryEventsCommand:
         assert result["events_received"] == 2
         assert result["events_processed"] == 2
         assert result["events_failed"] == 0
+
+        # Verify Email.status was advanced for each event
+        db.expire_all()
+        email1 = (
+            db.query(Email)
+            .filter(Email.provider_message_id == provider_msg_id_1)
+            .first()
+        )
+        email2 = (
+            db.query(Email)
+            .filter(Email.provider_message_id == provider_msg_id_2)
+            .first()
+        )
+        assert email1.status == EmailStatus.DELIVERED
+        assert email2.status == EmailStatus.OPENED

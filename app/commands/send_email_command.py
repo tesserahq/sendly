@@ -2,19 +2,20 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.models.email import Email
-from datetime import datetime
 from app.repositories.email_repository import EmailRepository
-from app.schemas.email import EmailCreate, EmailEventCreate, EmailUpdate
+from app.schemas.email import EmailCreate
 from app.constants.email import EmailStatus
 from app.providers.base import EmailCreateRequest
 from mako.template import Template
 from app.providers.registry import get_default_provider
+from app.services.email_lifecycle_service import EmailLifecycleService
 
 
 class SendEmailCommand:
     def __init__(self, db: Session):
         self.db = db
         self.email_service = EmailRepository(db)
+        self.lifecycle = EmailLifecycleService(self.email_service)
 
     def execute(self, req: EmailCreateRequest) -> Email:
         """
@@ -39,7 +40,7 @@ class SendEmailCommand:
             )
 
         # 2) persist initial email row
-        email = EmailCreate(
+        email_create = EmailCreate(
             project_id=req.project_id,
             provider=email_provider.provider_id,
             from_email=str(req.from_email),
@@ -48,35 +49,19 @@ class SendEmailCommand:
             body=html,
             status=EmailStatus.QUEUED,
         )
-        email = self.email_service.create_email(email)
+        email = self.email_service.create_email(email_create)
 
         # 3) call provider
         result = email_provider.send_email(req.model_copy(update={"html": html}))
 
-        now = datetime.utcnow()
         if result.ok:
-            email_update = EmailUpdate(
-                status=EmailStatus.SENT,
-                sent_at=now,
+            return self.lifecycle.record_send_success(
+                email=email,
                 provider_message_id=result.provider_message_id,
             )
-            updated_email = self.email_service.update_email(email.id, email_update)
         else:
-            email_update = EmailUpdate(
-                status=EmailStatus.FAILED,
-                updated_at=now,
+            return self.lifecycle.record_send_failure(
+                email=email,
+                error_code=result.error_code,
+                error_message=result.error_message,
             )
-            updated_email = self.email_service.update_email(email.id, email_update)
-            self.email_service.create_email_event(
-                EmailEventCreate(
-                    email_id=email.id,
-                    event_type="failed",
-                    event_timestamp=now,
-                    details={
-                        "error_code": result.error_code,
-                        "error_message": result.error_message,
-                    },
-                )
-            )
-
-        return updated_email

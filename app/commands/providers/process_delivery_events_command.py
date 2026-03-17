@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from app.providers.email_provider import EmailProvider
 from app.providers.base import EmailEvent
 from app.repositories.email_repository import EmailRepository
-from app.schemas.email import EmailEventCreate
+from app.services.email_lifecycle_service import EmailLifecycleService
 
 
 class ProcessDeliveryEventsCommand:
@@ -31,6 +31,7 @@ class ProcessDeliveryEventsCommand:
         """
         self.db = db
         self.email_service = EmailRepository(db)
+        self.lifecycle = EmailLifecycleService(self.email_service)
 
     def execute(
         self,
@@ -111,12 +112,9 @@ class ProcessDeliveryEventsCommand:
                 f"Email not found for provider_message_id: {event.provider_message_id}"
             )
 
-        # Create the email event
-        email_event = EmailEventCreate(
-            email_id=email.id,
+        self.lifecycle.record_webhook_event(
+            email=email,
             event_type=event.type,
-            event_timestamp=event.occurred_at,
-            details=event.raw_payload,
+            occurred_at=event.occurred_at,
+            raw_payload=event.raw_payload,
         )
-
-        self.email_service.create_email_event(email_event)
