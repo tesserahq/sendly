@@ -2,7 +2,7 @@
 
 from typing import Awaitable, Callable, Optional
 from fastapi import Request
-from tessera_sdk.utils.authorization_dependency import authorize
+from tessera_sdk.server.dependencies.authorization import authorize
 
 ProjectResolver = Callable[[Request], Awaitable[Optional[str]]]
 

@@ -6,7 +6,7 @@ import rollbar
 from rollbar.logger import RollbarHandler
 from rollbar.contrib.fastapi import ReporterMiddleware as RollbarMiddleware
 from fastapi_pagination import add_pagination
-from tessera_sdk.fastapi import get_livez_readyz_router
+from tessera_sdk.server.health import get_livez_readyz_router
 
 from .routers import (
     email,
@@ -55,9 +55,13 @@ def create_app(testing: bool = False, auth_middleware=None) -> FastAPI:
 
     if not testing and not settings.disable_auth:
         logger.info("Main: Adding authentication middleware")
-        from tessera_sdk.middleware.authentication import AuthenticationMiddleware
-        from tessera_sdk.middleware.user_onboarding import UserOnboardingMiddleware
-        from tessera_sdk.utils.service_factory import create_service_factory
+        from tessera_sdk.server.middleware.authentication import (
+            AuthenticationMiddleware,
+        )
+        from tessera_sdk.server.middleware.user_onboarding import (
+            UserOnboardingMiddleware,
+        )
+        from tessera_sdk.infra.service_factory import create_service_factory
         from app.repositories.user_repository import UserRepository
 
         # Create service factory for UserRepository

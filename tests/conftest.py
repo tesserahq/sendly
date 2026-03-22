@@ -18,7 +18,7 @@ from unittest.mock import patch
 def mock_authorize(*args, **kwargs):
     """
     Mock authorize function that returns a dependency always returning True.
-    This mocks tessera_sdk.utils.authorization_dependency.authorize globally.
+    This mocks tessera_sdk.server.dependencies.authorization.authorize globally.
     """
 
     async def always_authorized():
@@ -29,7 +29,7 @@ def mock_authorize(*args, **kwargs):
 
 # Start the patch at module level before any routers are imported
 _authorize_patcher = patch(
-    "tessera_sdk.utils.authorization_dependency.authorize", mock_authorize
+    "tessera_sdk.server.dependencies.authorization.authorize", mock_authorize
 )
 _authorize_patcher.start()
 
