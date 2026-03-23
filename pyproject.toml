@@ -22,7 +22,7 @@ worker = "run_worker:main"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"
-fastapi = "v0.135.1"
+fastapi = "v0.135.2"
 python-dotenv = "^1.0.0"
 sqlalchemy = "^2.0.39"
 asyncpg = "^0.31.0"
