@@ -6,6 +6,7 @@ from app.repositories.email_repository import EmailRepository
 from app.schemas.email import EmailCreate
 from app.constants.email import EmailStatus
 from app.providers.base import EmailCreateRequest
+from app.providers.provider_errors import ProviderError
 from mako.template import Template
 from app.providers.registry import get_default_provider
 from app.services.email_lifecycle_service import EmailLifecycleService
@@ -52,7 +53,13 @@ class SendEmailCommand:
         email = self.email_service.create_email(email_create)
 
         # 3) call provider
-        result = email_provider.send_email(req.model_copy(update={"html": html}))
+        try:
+            result = email_provider.send_email(req.model_copy(update={"html": html}))
+        except ProviderError as e:
+            return self.lifecycle.record_send_failure(
+                email=email,
+                error_message=str(e),
+            )
 
         if result.ok:
             return self.lifecycle.record_send_success(

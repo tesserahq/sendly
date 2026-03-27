@@ -8,7 +8,9 @@ from .base import (
     EmailEvent,
 )
 from postmarker.core import PostmarkClient
+from postmarker.exceptions import ClientError
 from app.providers.email_provider import EmailProvider
+from app.providers.provider_errors import ProviderError
 from app.config import get_settings
 
 
@@ -23,14 +25,17 @@ class PostmarkProvider(EmailProvider):
         settings = get_settings()
 
         postmark = PostmarkClient(server_token=settings.postmark_api_key)
-        result = postmark.emails.send(
-            From=req.from_email,
-            # Check if postmark support sending to multiple recipients
-            To=req.to[0],
-            Subject=req.subject,
-            HtmlBody=req.html,
-            TextBody=req.text,
-        )
+        try:
+            result = postmark.emails.send(
+                From=req.from_email,
+                # Check if postmark support sending to multiple recipients
+                To=req.to[0],
+                Subject=req.subject,
+                HtmlBody=req.html,
+                TextBody=req.text,
+            )
+        except ClientError as e:
+            raise ProviderError(str(e)) from e
 
         return EmailSendResult(
             ok=result["ErrorCode"] == 0,
