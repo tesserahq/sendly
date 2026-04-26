@@ -7,6 +7,7 @@ from app.db import Base
 from app.config import Settings
 
 # Import all models so they are registered with Base.metadata
+import app.models  # noqa: F401
 
 # Manually create a fresh, uncached Settings instance
 settings = Settings()

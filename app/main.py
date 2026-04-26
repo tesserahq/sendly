@@ -11,6 +11,8 @@ from tessera_sdk.server.health import get_livez_readyz_router
 from .routers import (
     email,
     provider,
+    layout,
+    template,
 )
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from app.telemetry import setup_tracing
@@ -97,6 +99,8 @@ def create_app(testing: bool = False, auth_middleware=None) -> FastAPI:
 
     app.include_router(email.router)
     app.include_router(provider.router)
+    app.include_router(layout.router)
+    app.include_router(template.router)
 
     app.include_router(get_livez_readyz_router())
 

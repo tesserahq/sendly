@@ -18,15 +18,16 @@ class Attachment(BaseModel):
 
 class EmailCreateRequest(BaseModel):
     project_id: Optional[UUID] = None
-    from_email: EmailStr
-    subject: str
+    from_email: Optional[EmailStr] = None
+    subject: Optional[str] = None
     html: Optional[str] = None
     text: Optional[str] = None
     attachments: List[Attachment] = []
     to: List[EmailStr]
     cc: List[EmailStr] = []
     bcc: List[EmailStr] = []
-    template_id: Optional[str] = None
+    template_id: Optional[UUID] = None
+    template_alias: Optional[str] = None
     template_variables: Dict[str, Any] = Field(default_factory=dict)
     custom_headers: Dict[str, str] = Field(default_factory=dict)
     priority: Optional[int] = None
