@@ -1,0 +1,15 @@
+site_name: Sendly Documentation
+site_description: Email sending service documentation
+
+docs_dir: .
+
+nav:
+  - Home: design.md
+  - API Patterns: api-patterns.md
+  - Database: database.md
+
+plugins:
+  - techdocs-core
+
+exclude_docs: |
+  mkdocs.yml
