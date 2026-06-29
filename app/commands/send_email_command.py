@@ -155,6 +155,7 @@ class SendEmailCommand:
 
     @staticmethod
     def _render(template_str: str, **variables) -> str:
+        variables.setdefault("year", datetime.now().year)
         variables = {k: SendEmailCommand._to_namespace(v) for k, v in variables.items()}
         try:
             return MakoTemplate(template_str).render(**variables)
