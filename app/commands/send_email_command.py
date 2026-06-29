@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import types
+from datetime import datetime
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 
@@ -147,7 +148,9 @@ class SendEmailCommand:
     @staticmethod
     def _to_namespace(obj):
         if isinstance(obj, dict):
-            return types.SimpleNamespace(**{k: SendEmailCommand._to_namespace(v) for k, v in obj.items()})
+            return types.SimpleNamespace(
+                **{k: SendEmailCommand._to_namespace(v) for k, v in obj.items()}
+            )
         return obj
 
     @staticmethod
@@ -155,10 +158,13 @@ class SendEmailCommand:
         variables = {k: SendEmailCommand._to_namespace(v) for k, v in variables.items()}
         try:
             return MakoTemplate(template_str).render(**variables)
-        except NameError as e:
-            raise ValueError(
-                f"Template rendering failed: undefined variable. "
-                f"Variables provided: {list(variables.keys())}. Error: {str(e)}"
+        except (NameError, AttributeError) as e:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Template rendering failed: a required variable is missing or undefined. "
+                    f"Variables provided: {[k for k in variables if k != 'year']}. Error: {e}"
+                ),
             )
         except MakoException as e:
             raise HTTPException(
