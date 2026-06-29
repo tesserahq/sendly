@@ -100,6 +100,60 @@ class TestTemplateRouter:
         get_response = client.get(f"/templates/{setup_template.id}")
         assert get_response.status_code == status.HTTP_404_NOT_FOUND
 
+    def test_clone_template_defaults(self, client, setup_template):
+        response = client.post(f"/templates/{setup_template.id}/clone")
+        assert response.status_code == status.HTTP_201_CREATED
+        data = response.json()
+        assert data["alias"] == f"{setup_template.alias}-copy"
+        assert data["name"] == f"{setup_template.name} copy"
+        assert data["subject"] == setup_template.subject
+        assert data["html"] == setup_template.html
+        assert data["from_email"] == setup_template.from_email
+        assert data["id"] != str(setup_template.id)
+
+    def test_clone_template_custom_alias_and_name(self, client, setup_template):
+        response = client.post(
+            f"/templates/{setup_template.id}/clone",
+            json={"alias": "My Custom Clone", "name": "Custom Name"},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        data = response.json()
+        assert data["alias"] == "my-custom-clone"
+        assert data["name"] == "Custom Name"
+
+    def test_clone_template_conflict(self, client, setup_template):
+        client.post(f"/templates/{setup_template.id}/clone")
+        response = client.post(f"/templates/{setup_template.id}/clone")
+        assert response.status_code == status.HTTP_409_CONFLICT
+
+    def test_clone_template_not_found(self, client):
+        response = client.post(f"/templates/{uuid4()}/clone")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_clone_template_with_layout(self, client, setup_template_with_layout, setup_layout):
+        response = client.post(f"/templates/{setup_template_with_layout.id}/clone")
+        assert response.status_code == status.HTTP_201_CREATED
+        data = response.json()
+        assert data["layout_id"] == str(setup_layout.id)
+
+    def test_clone_template_no_name(self, client, db):
+        from app.models.template import Template as TemplateModel
+        nameless = TemplateModel(
+            alias="nameless-template",
+            subject="Hi",
+            html="<p>hi</p>",
+            from_email="x@example.com",
+        )
+        db.add(nameless)
+        db.commit()
+        db.refresh(nameless)
+
+        response = client.post(f"/templates/{nameless.id}/clone")
+        assert response.status_code == status.HTTP_201_CREATED
+        data = response.json()
+        assert data["alias"] == "nameless-template-copy"
+        assert data["name"] is None
+
     def test_send_email_with_template_alias(self, client, setup_template):
         mock_result = MagicMock(ok=True, provider_message_id="pm-123")
         with patch(

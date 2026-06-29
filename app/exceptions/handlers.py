@@ -2,6 +2,7 @@ from traceback import format_exc
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from app.exceptions.resource_not_found_error import ResourceNotFoundError
+from app.exceptions.conflict_error import ConflictError
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -9,6 +10,13 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def resource_not_found_handler(request: Request, exc: ResourceNotFoundError):
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(ConflictError)
+    async def conflict_handler(request: Request, exc: ConflictError):
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
             content={"detail": str(exc)},
         )
 

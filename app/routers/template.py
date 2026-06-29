@@ -5,9 +5,10 @@ from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import paginate
 
 from app.db import get_db
-from app.schemas.template import Template, TemplateCreate, TemplateUpdate
+from app.schemas.template import Template, TemplateClone, TemplateCreate, TemplateUpdate
 from app.repositories.template_repository import TemplateRepository
 from app.commands.templates.create_template_command import CreateTemplateCommand
+from app.commands.templates.clone_template_command import CloneTemplateCommand
 from app.commands.templates.update_template_command import UpdateTemplateCommand
 from app.commands.templates.delete_template_command import DeleteTemplateCommand
 from app.auth.rbac import build_rbac_dependencies
@@ -47,6 +48,16 @@ def get_template(
     _authorized: bool = Depends(rbac["read"]),
 ) -> Template:
     return template
+
+
+@router.post("/{template_id}/clone", response_model=Template, status_code=status.HTTP_201_CREATED)
+def clone_template(
+    template_id: UUID,
+    request: TemplateClone = TemplateClone(),
+    db: Session = Depends(get_db),
+    _authorized: bool = Depends(rbac["create"]),
+) -> Template:
+    return CloneTemplateCommand(db).execute(template_id, request)
 
 
 @router.patch("/{template_id}", response_model=Template)

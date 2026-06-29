@@ -49,5 +49,15 @@ class TemplateInDB(TemplateBase):
     model_config = {"from_attributes": True}
 
 
+class TemplateClone(BaseModel):
+    alias: Optional[str] = None
+    name: Optional[str] = None
+
+    @field_validator("alias", mode="before")
+    @classmethod
+    def normalise_alias(cls, v: Optional[str]) -> Optional[str]:
+        return slugify(v) if v is not None else v
+
+
 class Template(TemplateInDB):
     layout: Optional[Layout] = None
