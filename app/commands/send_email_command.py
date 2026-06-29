@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import types
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 
@@ -144,7 +145,14 @@ class SendEmailCommand:
         return template
 
     @staticmethod
+    def _to_namespace(obj):
+        if isinstance(obj, dict):
+            return types.SimpleNamespace(**{k: SendEmailCommand._to_namespace(v) for k, v in obj.items()})
+        return obj
+
+    @staticmethod
     def _render(template_str: str, **variables) -> str:
+        variables = {k: SendEmailCommand._to_namespace(v) for k, v in variables.items()}
         try:
             return MakoTemplate(template_str).render(**variables)
         except NameError as e:

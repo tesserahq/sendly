@@ -209,14 +209,14 @@ class TestTemplateRouter:
         assert "Hello Carol" in body
 
     def test_send_email_with_layout_and_layout_variables(self, client, db, faker):
-        """Layout-level variables (beyond 'content') must resolve from template_variables."""
+        """Layout-level variables including nested dicts (dot-notation) must resolve."""
         from app.models.layout import Layout
         from app.models.template import Template
 
         layout = Layout(
             alias=faker.slug(),
             name=faker.word(),
-            html="<html><body><header>${site_name}</header>${content}</body></html>",
+            html="<html><body><header>${common.product_name}</header>${content}</body></html>",
         )
         db.add(layout)
         db.commit()
@@ -246,7 +246,10 @@ class TestTemplateRouter:
                 json={
                     "to": ["user@example.com"],
                     "template_alias": template.alias,
-                    "template_variables": {"name": "Dana", "site_name": "Acme"},
+                    "template_variables": {
+                        "name": "Dana",
+                        "common": {"product_name": "Acme"},
+                    },
                 },
             )
 
