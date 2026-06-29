@@ -18,8 +18,10 @@ class CloneTemplateCommand:
             raise ResourceNotFoundError("Template not found")
 
         new_alias = req.alias if req.alias is not None else f"{source.alias}-copy"
-        new_name = req.name if req.name is not None else (
-            f"{source.name} copy" if source.name else None
+        new_name = (
+            req.name
+            if req.name is not None
+            else (f"{source.name} copy" if source.name else None)
         )
 
         if self.repo.get_template_by_alias(new_alias) is not None:

@@ -50,7 +50,9 @@ def get_template(
     return template
 
 
-@router.post("/{template_id}/clone", response_model=Template, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{template_id}/clone", response_model=Template, status_code=status.HTTP_201_CREATED
+)
 def clone_template(
     template_id: UUID,
     request: TemplateClone = TemplateClone(),

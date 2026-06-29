@@ -130,7 +130,9 @@ class TestTemplateRouter:
         response = client.post(f"/templates/{uuid4()}/clone")
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_clone_template_with_layout(self, client, setup_template_with_layout, setup_layout):
+    def test_clone_template_with_layout(
+        self, client, setup_template_with_layout, setup_layout
+    ):
         response = client.post(f"/templates/{setup_template_with_layout.id}/clone")
         assert response.status_code == status.HTTP_201_CREATED
         data = response.json()
@@ -138,6 +140,7 @@ class TestTemplateRouter:
 
     def test_clone_template_no_name(self, client, db):
         from app.models.template import Template as TemplateModel
+
         nameless = TemplateModel(
             alias="nameless-template",
             subject="Hi",
