@@ -28,7 +28,11 @@ class TemplateRepository(SoftDeleteRepository[Template]):
         )
 
     def get_templates_query(self):
-        return self.db.query(Template).order_by(Template.created_at.desc())
+        return (
+            self.db.query(Template)
+            .options(selectinload(Template.layout))
+            .order_by(Template.created_at.desc())
+        )
 
     def get_templates(self, skip: int = 0, limit: int = 100) -> List[Template]:
         return self.db.query(Template).offset(skip).limit(limit).all()

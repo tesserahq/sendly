@@ -35,7 +35,20 @@ class TestTemplateRouter:
     def test_get_template(self, client, setup_template):
         response = client.get(f"/templates/{setup_template.id}")
         assert response.status_code == status.HTTP_200_OK
-        assert response.json()["id"] == str(setup_template.id)
+        data = response.json()
+        assert data["id"] == str(setup_template.id)
+        assert data["layout_id"] is None
+        assert data["layout"] is None
+
+    def test_get_template_with_layout(
+        self, client, setup_template_with_layout, setup_layout
+    ):
+        response = client.get(f"/templates/{setup_template_with_layout.id}")
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["layout_id"] == str(setup_layout.id)
+        assert data["layout"]["id"] == str(setup_layout.id)
+        assert data["layout"]["alias"] == setup_layout.alias
 
     def test_get_template_not_found(self, client):
         response = client.get(f"/templates/{uuid4()}")
@@ -47,6 +60,20 @@ class TestTemplateRouter:
         ids = [item["id"] for item in response.json()["items"]]
         assert str(setup_template.id) in ids
 
+    def test_list_templates_includes_nested_layout(
+        self, client, setup_template_with_layout, setup_layout
+    ):
+        response = client.get("/templates")
+        assert response.status_code == status.HTTP_200_OK
+        template = next(
+            item
+            for item in response.json()["items"]
+            if item["id"] == str(setup_template_with_layout.id)
+        )
+        assert template["layout_id"] == str(setup_layout.id)
+        assert template["layout"]["id"] == str(setup_layout.id)
+        assert template["layout"]["alias"] == setup_layout.alias
+
     def test_update_template(self, client, setup_template):
         response = client.patch(
             f"/templates/{setup_template.id}",
@@ -54,6 +81,17 @@ class TestTemplateRouter:
         )
         assert response.status_code == status.HTTP_200_OK
         assert response.json()["subject"] == "New Subject"
+
+    def test_update_template_with_layout(self, client, setup_template, setup_layout):
+        response = client.patch(
+            f"/templates/{setup_template.id}",
+            json={"layout_id": str(setup_layout.id)},
+        )
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["layout_id"] == str(setup_layout.id)
+        assert data["layout"]["id"] == str(setup_layout.id)
+        assert data["layout"]["alias"] == setup_layout.alias
 
     def test_delete_template(self, client, setup_template):
         response = client.delete(f"/templates/{setup_template.id}")

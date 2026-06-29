@@ -4,6 +4,8 @@ from uuid import UUID
 from datetime import datetime
 from slugify import slugify
 
+from app.schemas.layout import Layout
+
 
 class TemplateBase(BaseModel):
     alias: str
@@ -48,4 +50,4 @@ class TemplateInDB(TemplateBase):
 
 
 class Template(TemplateInDB):
-    pass
+    layout: Optional[Layout] = None
