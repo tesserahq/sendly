@@ -207,3 +207,50 @@ class TestTemplateRouter:
         body = response.json()["body"]
         assert "<html>" in body
         assert "Hello Carol" in body
+
+    def test_send_email_with_layout_and_layout_variables(self, client, db, faker):
+        """Layout-level variables (beyond 'content') must resolve from template_variables."""
+        from app.models.layout import Layout
+        from app.models.template import Template
+
+        layout = Layout(
+            alias=faker.slug(),
+            name=faker.word(),
+            html="<html><body><header>${site_name}</header>${content}</body></html>",
+        )
+        db.add(layout)
+        db.commit()
+        db.refresh(layout)
+
+        template = Template(
+            alias=faker.slug(),
+            name=faker.word(),
+            subject="Hi ${name}",
+            html="<p>Hello ${name}</p>",
+            from_email=faker.email(),
+            layout_id=layout.id,
+        )
+        db.add(template)
+        db.commit()
+        db.refresh(template)
+
+        mock_result = MagicMock(ok=True, provider_message_id="pm-layout-vars")
+        with patch(
+            "app.commands.send_email_command.get_default_provider"
+        ) as mock_provider:
+            mock_provider.return_value.provider_id = "postmark"
+            mock_provider.return_value.send_email.return_value = mock_result
+
+            response = client.post(
+                "/emails",
+                json={
+                    "to": ["user@example.com"],
+                    "template_alias": template.alias,
+                    "template_variables": {"name": "Dana", "site_name": "Acme"},
+                },
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        body = response.json()["body"]
+        assert "Acme" in body
+        assert "Hello Dana" in body

@@ -80,19 +80,21 @@ class SendEmailCommand:
     def _resolve_template(self, req: EmailCreateRequest) -> tuple[str, str, str]:
         template = self._fetch_template(req)
 
-        raw_html = template.html
         if template.layout:
-            raw_html = self._render(template.layout.html, content=template.html)
-        elif template.layout_id is not None:
-            # layout_id is set but layout is None — it was soft-deleted
-            logger.warning(
-                "Template %s references layout_id %s which no longer exists; "
-                "sending without layout.",
-                template.id,
-                template.layout_id,
+            rendered_content = self._render(template.html, **req.template_variables)
+            html = self._render(
+                template.layout.html, content=rendered_content, **req.template_variables
             )
-
-        html = self._render(raw_html, **req.template_variables)
+        else:
+            if template.layout_id is not None:
+                # layout_id is set but layout is None — it was soft-deleted
+                logger.warning(
+                    "Template %s references layout_id %s which no longer exists; "
+                    "sending without layout.",
+                    template.id,
+                    template.layout_id,
+                )
+            html = self._render(template.html, **req.template_variables)
         subject = self._render(template.subject, **req.template_variables)
 
         from_email = str(req.from_email or template.from_email or "")
