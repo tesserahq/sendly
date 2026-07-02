@@ -21,7 +21,7 @@ from app.telemetry import setup_tracing
 from app.exceptions.handlers import register_exception_handlers
 from app.core.logging_config import get_logger
 from app.db import db_manager
-from app.utils.metrics import PrometheusMiddleware, metrics
+from prometheus_fastapi_instrumentator import Instrumentator
 
 SKIP_PATHS = ["/metrics", "/livez", "/readyz"]
 
@@ -81,10 +81,6 @@ def create_app(testing: bool = False, auth_middleware=None) -> FastAPI:
             user_service_factory=user_service_factory,
         )
 
-        # Setting metrics middleware
-        app.add_middleware(PrometheusMiddleware, app_name=settings.app_name)
-        app.add_route("/metrics", metrics)
-
     else:
         logger.info("Main: No authentication middleware")
         if auth_middleware:
@@ -121,6 +117,9 @@ settings = get_settings()
 if settings.otel_enabled:
     tracer_provider = setup_tracing()  # Or use env/config
     FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider)
+    Instrumentator(
+        excluded_handlers=["^/$", "/livez", "/readyz", "/metrics", "none"],
+    ).instrument(app).expose(app)
 
 
 @app.get("/")
