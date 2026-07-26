@@ -9,6 +9,14 @@ from app.providers.email_provider import EmailProvider
 from app.providers.base import EmailEvent
 from app.repositories.email_repository import EmailRepository
 from app.services.email_lifecycle_service import EmailLifecycleService
+from app.commands.providers.handle_subscription_change_command import (
+    HandleSubscriptionChangeCommand,
+)
+
+# Event types that represent a Postmark SubscriptionChange (unsubscribe or
+# reactivation), requiring suppression-table writes/NATS publishing on top of
+# the normal EmailLifecycleService status write every event gets.
+_SUBSCRIPTION_CHANGE_EVENT_TYPES = frozenset({"unsubscribed", "resubscribed"})
 
 
 class ProcessDeliveryEventsCommand:
@@ -118,3 +126,8 @@ class ProcessDeliveryEventsCommand:
             occurred_at=event.occurred_at,
             raw_payload=event.raw_payload,
         )
+
+        if event.type in _SUBSCRIPTION_CHANGE_EVENT_TYPES:
+            HandleSubscriptionChangeCommand(self.db).execute(
+                email=email, raw_payload=event.raw_payload
+            )

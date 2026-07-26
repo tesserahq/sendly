@@ -13,5 +13,6 @@ class EmailStatus:
     COMPLAINED = "complained"  # terminal
     DROPPED = "dropped"  # terminal
     DEFERRED = "deferred"
-    UNSUBSCRIBED = "unsubscribed"
+    UNSUBSCRIBED = "unsubscribed"  # terminal
     FAILED = "failed"  # terminal
+    SUPPRESSED = "suppressed"  # terminal

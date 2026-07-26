@@ -35,6 +35,8 @@ _TERMINAL_STATUSES: frozenset[str] = frozenset(
         EmailStatus.COMPLAINED,
         EmailStatus.DROPPED,
         EmailStatus.FAILED,
+        EmailStatus.UNSUBSCRIBED,
+        EmailStatus.SUPPRESSED,
     }
 )
 
@@ -139,6 +141,34 @@ class EmailLifecycleService:
             event_type="failed",
             occurred_at=now,
             details={"error_code": error_code, "error_message": error_message},
+        )
+        return updated
+
+    def record_send_suppressed(
+        self,
+        *,
+        email: Email,
+        reason: Optional[str] = None,
+        suppressed_at: Optional[datetime] = None,
+    ) -> Email:
+        """
+        Mark an email SUPPRESSED (terminal) and emit a 'suppressed' event.
+
+        Used when a recipient is found to be suppressed (unsubscribed) at
+        send time, distinct from a provider failure.
+
+        Returns the updated Email.
+        """
+        now = suppressed_at or datetime.now(timezone.utc)
+        updated = self._repo.update_email(
+            email.id,
+            EmailUpdate(status=EmailStatus.SUPPRESSED),
+        )
+        self._create_event(
+            email_id=email.id,
+            event_type="suppressed",
+            occurred_at=now,
+            details={"reason": reason},
         )
         return updated
 

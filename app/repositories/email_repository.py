@@ -159,6 +159,20 @@ class EmailRepository(SoftDeleteRepository[Email]):
             .all()
         )
 
+    def get_emails_by_ids(self, email_ids: List[UUID]) -> List[Email]:
+        """
+        Get multiple emails by id in one query.
+
+        Args:
+            email_ids: The IDs of the emails to retrieve
+
+        Returns:
+            List[Email]: The matching emails (order not guaranteed)
+        """
+        if not email_ids:
+            return []
+        return self.db.query(Email).filter(Email.id.in_(email_ids)).all()
+
     def get_email_by_provider_message_id(
         self, provider_message_id: str, provider: str
     ) -> Optional[Email]:

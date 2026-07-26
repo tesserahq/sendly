@@ -1,7 +1,7 @@
 # sendly/providers/base.py
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, List
 
 from app.providers.base import EmailEvent, EmailCreateRequest, EmailSendResult
 
@@ -26,6 +26,17 @@ class EmailProvider(ABC):
     def send_email(self, req: EmailCreateRequest) -> EmailSendResult:
         """Translate EmailCreateRequest -> provider API call -> EmailSendResult."""
         raise NotImplementedError
+
+    def send_batch(self, requests: List[EmailCreateRequest]) -> List[EmailSendResult]:
+        """Send a batch of emails in as few provider round-trips as possible.
+
+        Returns one EmailSendResult per request, in the same order. Providers
+        without native batch support may fall back to per-message send_email calls;
+        the default here raises so a caller doesn't silently degrade to N round-trips.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support batch sending."
+        )
 
     @abstractmethod
     def parse_webhook(

@@ -14,10 +14,9 @@ import app.models  # noqa: F401
 # Import tasks for autodiscovery (using lazy imports to avoid heavy dependencies)
 def _import_tasks():
     """Import tasks for registration."""
-    # try:
-    #     from . import backfill_digests  # noqa: F401
-    # except ImportError:
-    #     pass
+    from . import prepare_broadcast_chunk_task  # noqa: F401
+    from . import send_broadcast_chunk_task  # noqa: F401
+    from . import broadcast_recovery_sweep_task  # noqa: F401
 
 
 _import_tasks()
