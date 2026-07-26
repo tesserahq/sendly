@@ -44,7 +44,9 @@ def upgrade() -> None:
         ),
         sa.Column("deleted_at", sa.DateTime(), nullable=True),
     )
-    op.create_index("ix_email_suppressions_deleted_at", "email_suppressions", ["deleted_at"])
+    op.create_index(
+        "ix_email_suppressions_deleted_at", "email_suppressions", ["deleted_at"]
+    )
     op.create_index(
         "uq_email_suppressions_project_email_active",
         "email_suppressions",
@@ -76,7 +78,9 @@ def upgrade() -> None:
         ),
         sa.Column("deleted_at", sa.DateTime(), nullable=True),
     )
-    op.create_index("ix_broadcast_batches_deleted_at", "broadcast_batches", ["deleted_at"])
+    op.create_index(
+        "ix_broadcast_batches_deleted_at", "broadcast_batches", ["deleted_at"]
+    )
     op.create_index(
         "uq_broadcast_batches_project_batch_active",
         "broadcast_batches",
@@ -195,7 +199,8 @@ def downgrade() -> None:
     )
     op.drop_table("broadcast_recipients")
     op.drop_index(
-        "uq_broadcast_batches_project_idempotency_active", table_name="broadcast_batches"
+        "uq_broadcast_batches_project_idempotency_active",
+        table_name="broadcast_batches",
     )
     op.drop_index(
         "uq_broadcast_batches_project_batch_active", table_name="broadcast_batches"
