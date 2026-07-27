@@ -50,6 +50,18 @@ class TestSendEmail:
         assert result.ok is True
         assert result.provider_message_id == "pm-1"
 
+    def test_joins_multiple_recipients_with_comma(self):
+        req = _make_request(to=["a@example.com", "b@example.com"])
+        with patch("app.providers.postmark_provider.PostmarkClient") as MockClient:
+            MockClient.return_value.emails.send.return_value = {
+                "ErrorCode": 0,
+                "MessageID": "pm-1",
+            }
+            PostmarkProvider({}).send_email(req)
+
+        call_kwargs = MockClient.return_value.emails.send.call_args.kwargs
+        assert call_kwargs["To"] == "a@example.com, b@example.com"
+
     def test_omits_message_stream_when_not_set(self):
         req = _make_request()
         with patch("app.providers.postmark_provider.PostmarkClient") as MockClient:

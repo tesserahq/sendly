@@ -16,7 +16,7 @@ from app.config import get_settings
 from app.constants.email import EmailStatus
 from app.core.celery_app import celery_app
 from app.db import SessionLocal
-from app.providers.base import Attachment, EmailCreateRequest
+from app.providers.base import EmailCreateRequest
 from app.providers.registry import get_default_provider
 from app.repositories.broadcast_repository import BroadcastRepository
 from app.repositories.email_delivery_payload_repository import (
@@ -25,6 +25,7 @@ from app.repositories.email_delivery_payload_repository import (
 from app.repositories.email_repository import EmailRepository
 from app.repositories.email_send_outbox_repository import EmailSendOutboxRepository
 from app.repositories.suppression_repository import SuppressionRepository
+from app.schemas.broadcast import ContentSpec
 from app.schemas.email import EmailCreate
 from app.services.broadcast_outbox_publisher import BroadcastOutboxPublisher
 from app.services.email_rendering_service import (
@@ -68,7 +69,7 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> N
     if not recipients:
         return
 
-    content_spec = batch.content_spec
+    content_spec = ContentSpec.model_validate(batch.content_spec)
     # Recheck suppression: a recipient suppressed between acceptance and this
     # task still gets skipped, even though it wasn't flagged suppressed at
     # accept time.
@@ -87,25 +88,23 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> N
             continue
 
         template_variables = {
-            **(content_spec.get("template_variables") or {}),
+            **content_spec.template_variables,
             **(recipient.attributes or {}),
             "first_name": recipient.first_name,
             "last_name": recipient.last_name,
         }
         req = EmailCreateRequest(
             project_id=batch.project_id,
-            from_email=content_spec.get("from_email"),
-            subject=content_spec.get("subject"),
-            html=content_spec.get("html"),
-            text=content_spec.get("text"),
-            attachments=[
-                Attachment(**a) for a in (content_spec.get("attachments") or [])
-            ],
+            from_email=content_spec.from_email,
+            subject=content_spec.subject,
+            html=content_spec.html,
+            text=content_spec.text,
+            attachments=content_spec.attachments,
             to=[recipient.email],
-            template_id=content_spec.get("template_id"),
-            template_alias=content_spec.get("template_alias"),
+            template_id=content_spec.template_id,
+            template_alias=content_spec.template_alias,
             template_variables=template_variables,
-            custom_headers=content_spec.get("custom_headers") or {},
+            custom_headers=content_spec.custom_headers,
             message_stream=message_stream,
         )
 
@@ -131,8 +130,8 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> N
                 body=rendered.html,
                 status=EmailStatus.QUEUED,
                 batch_id=batch.batch_id,
-                tags=content_spec.get("tags"),
-                metadata_=content_spec.get("metadata"),
+                tags=content_spec.tags,
+                metadata_=content_spec.metadata,
             )
         )
         payload_repo.create_payload(
@@ -141,9 +140,9 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> N
             to_email=recipient.email,
             subject=rendered.subject,
             html=rendered.html,
-            text=content_spec.get("text"),
-            attachments=content_spec.get("attachments") or [],
-            custom_headers=content_spec.get("custom_headers") or {},
+            text=content_spec.text,
+            attachments=[a.model_dump() for a in content_spec.attachments],
+            custom_headers=content_spec.custom_headers,
             message_stream=message_stream,
         )
         outbox_repo.create_entry(email_id=email.id)

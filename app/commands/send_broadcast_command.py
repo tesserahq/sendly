@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from typing import Any, Dict, List
+from typing import List
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -20,7 +20,11 @@ from sqlalchemy.orm import Session
 from app.models.broadcast_batch import BroadcastBatch
 from app.repositories.broadcast_repository import BroadcastRepository
 from app.repositories.suppression_repository import SuppressionRepository
-from app.schemas.broadcast import BroadcastCreateRequest, BroadcastRecipient
+from app.schemas.broadcast import (
+    BroadcastCreateRequest,
+    BroadcastRecipient,
+    ContentSpec,
+)
 from app.services.broadcast_prepare_publisher import BroadcastPreparePublisher
 
 
@@ -31,7 +35,7 @@ class SendBroadcastCommand:
         self.suppression_repo = SuppressionRepository(db)
 
     def execute(self, req: BroadcastCreateRequest) -> BroadcastBatch:
-        content_spec = self._build_content_spec(req)
+        content_spec = ContentSpec.from_request(req)
         fingerprint = self._fingerprint(content_spec, req.recipients)
 
         if req.idempotency_key:
@@ -63,7 +67,7 @@ class SendBroadcastCommand:
             batch_id=batch_id,
             idempotency_key=req.idempotency_key,
             request_fingerprint=fingerprint,
-            content_spec=content_spec,
+            content_spec=content_spec.model_dump(mode="json"),
             queued_count=queued_count,
             suppressed_count=suppressed_count,
         )
@@ -79,27 +83,11 @@ class SendBroadcastCommand:
         return batch
 
     @staticmethod
-    def _build_content_spec(req: BroadcastCreateRequest) -> Dict[str, Any]:
-        return {
-            "html": req.html,
-            "text": req.text,
-            "template_id": str(req.template_id) if req.template_id else None,
-            "template_alias": req.template_alias,
-            "template_variables": req.template_variables,
-            "subject": req.subject,
-            "from_email": req.from_email,
-            "custom_headers": req.custom_headers,
-            "attachments": [a.model_dump() for a in req.attachments],
-            "tags": req.tags,
-            "metadata": req.metadata,
-        }
-
-    @staticmethod
     def _fingerprint(
-        content_spec: Dict[str, Any], recipients: List[BroadcastRecipient]
+        content_spec: ContentSpec, recipients: List[BroadcastRecipient]
     ) -> str:
         payload = {
-            "content_spec": content_spec,
+            "content_spec": content_spec.model_dump(mode="json"),
             "recipients": [r.model_dump(mode="json") for r in recipients],
         }
         canonical = json.dumps(payload, sort_keys=True, default=str)

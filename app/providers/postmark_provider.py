@@ -18,8 +18,8 @@ def _build_message(req: EmailCreateRequest) -> Dict[str, Any]:
     """Build the postmarker `emails.send`/`send_batch` kwargs for one request."""
     message: Dict[str, Any] = {
         "From": req.from_email,
-        # Check if postmark support sending to multiple recipients
-        "To": req.to[0],
+        # Postmark's To accepts comma-separated addresses (max 50).
+        "To": ", ".join(req.to),
         "Subject": req.subject,
         "HtmlBody": req.html,
         "TextBody": req.text,
