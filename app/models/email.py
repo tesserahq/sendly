@@ -1,7 +1,7 @@
 from sqlalchemy.orm import relationship
 from app.models.mixins import TimestampMixin, SoftDeleteMixin
 from sqlalchemy import Column, String, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 import uuid
 
@@ -26,6 +26,11 @@ class Email(Base, TimestampMixin, SoftDeleteMixin):
     provider_message_id = Column(String, nullable=True)
     project_id = Column(UUID(as_uuid=True), nullable=True)
     error_message = Column(String, nullable=True)
+    batch_id = Column(String, nullable=True, index=True)
+    tags = Column(JSONB, nullable=True)
+    # "metadata" is reserved on the declarative Base (holds schema MetaData),
+    # so the Python attribute is "metadata_" while the DB column stays "metadata".
+    metadata_ = Column("metadata", JSONB, nullable=True)
 
     events = relationship("EmailEvent", back_populates="email")
 

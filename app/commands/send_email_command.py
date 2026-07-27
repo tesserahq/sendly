@@ -1,24 +1,21 @@
 from __future__ import annotations
-import logging
-import types
-from datetime import datetime
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 
 from app.models.email import Email
-from app.models.template import Template
 from app.repositories.email_repository import EmailRepository
-from app.repositories.template_repository import TemplateRepository
 from app.schemas.email import EmailCreate
 from app.constants.email import EmailStatus
 from app.providers.base import EmailCreateRequest
 from app.providers.provider_errors import ProviderError
-from mako.template import Template as MakoTemplate
-from mako.exceptions import MakoException
 from app.providers.registry import get_default_provider
 from app.services.email_lifecycle_service import EmailLifecycleService
-
-logger = logging.getLogger(__name__)
+from app.services.email_rendering_service import (
+    EmailRenderingService,
+    MissingFieldError,
+    TemplateNotFoundError,
+    TemplateSyntaxError,
+)
 
 
 class SendEmailCommand:
@@ -26,6 +23,7 @@ class SendEmailCommand:
         self.db = db
         self.email_service = EmailRepository(db)
         self.lifecycle = EmailLifecycleService(self.email_service)
+        self.rendering = EmailRenderingService(db)
 
     def execute(self, req: EmailCreateRequest) -> Email:
         using_template = req.template_id is not None or req.template_alias is not None
@@ -37,28 +35,38 @@ class SendEmailCommand:
                 detail="Cannot specify both a template reference and inline html.",
             )
 
-        if using_template:
-            html, subject, from_email = self._resolve_template(req)
-        else:
-            html, subject, from_email = self._resolve_inline(req)
+        try:
+            rendered = self.rendering.resolve(req)
+        except TemplateNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except MissingFieldError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        except TemplateSyntaxError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
         email_provider = get_default_provider()
 
         email_create = EmailCreate(
             project_id=req.project_id,
             provider=email_provider.provider_id,
-            from_email=from_email,
+            from_email=rendered.from_email,
             to_email=str(req.to[0]),
-            subject=subject,
-            body=html,
+            subject=rendered.subject,
+            body=rendered.html,
             status=EmailStatus.QUEUED,
+            tags=req.tags,
+            metadata_=req.metadata,
         )
         email = self.email_service.create_email(email_create)
 
         try:
             result = email_provider.send_email(
                 req.model_copy(
-                    update={"html": html, "subject": subject, "from_email": from_email}
+                    update={
+                        "html": rendered.html,
+                        "subject": rendered.subject,
+                        "from_email": rendered.from_email,
+                    }
                 )
             )
         except ProviderError as e:
@@ -77,98 +85,4 @@ class SendEmailCommand:
                 email=email,
                 error_code=result.error_code,
                 error_message=result.error_message,
-            )
-
-    def _resolve_template(self, req: EmailCreateRequest) -> tuple[str, str, str]:
-        template = self._fetch_template(req)
-
-        if template.layout:
-            rendered_content = self._render(template.html, **req.template_variables)
-            html = self._render(
-                template.layout.html, content=rendered_content, **req.template_variables
-            )
-        else:
-            if template.layout_id is not None:
-                # layout_id is set but layout is None — it was soft-deleted
-                logger.warning(
-                    "Template %s references layout_id %s which no longer exists; "
-                    "sending without layout.",
-                    template.id,
-                    template.layout_id,
-                )
-            html = self._render(template.html, **req.template_variables)
-        subject = self._render(template.subject, **req.template_variables)
-
-        from_email = str(req.from_email or template.from_email or "")
-        if not from_email:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "from_email is required: provide it in the request or set a "
-                    "default on the template."
-                ),
-            )
-
-        return html, subject, from_email
-
-    def _resolve_inline(self, req: EmailCreateRequest) -> tuple[str, str, str]:
-        if not req.from_email:
-            raise HTTPException(
-                status_code=422,
-                detail="from_email is required when sending with inline html.",
-            )
-        if not req.subject:
-            raise HTTPException(
-                status_code=422,
-                detail="subject is required when sending with inline html.",
-            )
-        if not req.html:
-            raise HTTPException(
-                status_code=422,
-                detail="html is required when not using a template.",
-            )
-
-        html = self._render(req.html, **req.template_variables)
-        return html, req.subject, str(req.from_email)
-
-    def _fetch_template(self, req: EmailCreateRequest) -> Template:
-        repo = TemplateRepository(self.db)
-        template = None
-
-        if req.template_id:
-            template = repo.get_template(req.template_id)
-        elif req.template_alias:
-            template = repo.get_template_by_alias(req.template_alias)
-
-        if template is None:
-            raise HTTPException(status_code=404, detail="Template not found.")
-
-        return template
-
-    @staticmethod
-    def _to_namespace(obj):
-        if isinstance(obj, dict):
-            return types.SimpleNamespace(
-                **{k: SendEmailCommand._to_namespace(v) for k, v in obj.items()}
-            )
-        return obj
-
-    @staticmethod
-    def _render(template_str: str, **variables) -> str:
-        variables.setdefault("year", datetime.now().year)
-        variables = {k: SendEmailCommand._to_namespace(v) for k, v in variables.items()}
-        try:
-            return MakoTemplate(template_str).render(**variables)
-        except (NameError, AttributeError) as e:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"Template rendering failed: a required variable is missing or undefined. "
-                    f"Variables provided: {[k for k in variables if k != 'year']}. Error: {e}"
-                ),
-            )
-        except MakoException as e:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Template syntax error: {str(e)}",
             )

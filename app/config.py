@@ -76,6 +76,14 @@ class Settings(BaseSettings):
     postmark_api_key: str = Field(
         default="", json_schema_extra={"env": "POSTMARK_API_KEY"}
     )
+    postmark_broadcast_stream_id: str = Field(
+        default="", json_schema_extra={"env": "POSTMARK_BROADCAST_STREAM_ID"}
+    )
+    broadcast_chunk_size: int = Field(
+        default=100,
+        le=500,  # Postmark's Bulk API (POST /email/batch) hard-caps at 500/call
+        json_schema_extra={"env": "BROADCAST_CHUNK_SIZE"},
+    )
 
     @model_validator(mode="before")
     def set_database_url(cls, values):

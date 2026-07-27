@@ -33,6 +33,11 @@ class EmailCreateRequest(BaseModel):
     priority: Optional[int] = None
     # Optional idempotency key to dedupe client retries
     idempotency_key: Optional[str] = None
+    tags: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
+    # Postmark (or another provider's) message stream override; broadcasts pass
+    # the configured broadcast stream id, single-sends leave this unset.
+    message_stream: Optional[str] = None
 
 
 class EmailSendResult(BaseModel):

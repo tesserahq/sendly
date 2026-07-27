@@ -19,9 +19,14 @@ def mock_authorize(*args, **kwargs):
     """
     Mock authorize function that returns a dependency always returning True.
     This mocks tessera_sdk.server.dependencies.authorization.authorize globally.
+
+    Mirrors the real dependency's signature (a single `request` param) —
+    some routes call the returned dependency directly (not via FastAPI's
+    Depends()) after loading a resource, to authorize against that
+    resource's actual project_id rather than a caller-supplied one.
     """
 
-    async def always_authorized():
+    async def always_authorized(request=None):
         return True
 
     return always_authorized
@@ -34,13 +39,19 @@ _authorize_patcher = patch(
 _authorize_patcher.start()
 
 from app.main import create_app
+from app.core.celery_app import celery_app
 
 pytest_plugins = [
     "tests.fixtures.user_fixtures",
     "tests.fixtures.email_fixtures",
     "tests.fixtures.layout_fixtures",
     "tests.fixtures.template_fixtures",
+    "tests.fixtures.broadcast_fixtures",
 ]
+
+# Broadcast tasks run through Celery; without a real Redis broker in tests,
+# eager mode executes them synchronously in-process instead.
+celery_app.conf.update(task_always_eager=True, task_eager_propagates=True)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -143,6 +154,50 @@ def db(engine):
 
 
 @pytest.fixture(scope="function")
+def real_db(engine):
+    """A session bound directly to the engine, with no outer rolled-back
+    transaction wrapping it.
+
+    Broadcast pipeline tests exercise Celery-eager tasks/publishers that open
+    their own SessionLocal() (a second, independent connection), exactly as
+    they do in production. The standard `db` fixture wraps each test in an
+    outer transaction on one connection — a second connection can never see
+    "committed" rows still inside that open transaction (normal Postgres
+    cross-connection isolation), so tests that need real cross-connection
+    visibility use this fixture instead and clean up the rows they created.
+    """
+    # Guard against ever truncating a non-test database: without
+    # ENVIRONMENT=test set, `settings.database_url` points at the real dev
+    # database and this fixture's teardown would otherwise delete real rows.
+    assert settings.is_test, (
+        "real_db fixture refuses to run without ENVIRONMENT=test — it performs "
+        "real DELETEs in teardown and settings.database_url is not pointing at "
+        "a disposable test database."
+    )
+
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    yield session
+
+    # This fixture's rows are genuinely committed (no outer transaction to roll
+    # back), so clean up explicitly. Safe against other tests: `db`-fixture
+    # tests roll back their own inserts and never persist here.
+    for table in (
+        "email_send_outbox",
+        "email_delivery_payloads",
+        "email_events",
+        "broadcast_recipients",
+        "broadcast_batches",
+        "emails",
+        "email_suppressions",
+    ):
+        session.execute(text(f"DELETE FROM {table}"))
+    session.commit()
+    session.close()
+
+
+@pytest.fixture(scope="function")
 def faker():
     """Create a Faker instance for generating test data."""
     return Faker()
@@ -199,6 +254,42 @@ def create_client_fixture(user_fixture_name):
 client = create_client_fixture("setup_user")
 client_another_user = create_client_fixture("setup_another_user")
 client_test_user = create_client_fixture("test_user")
+
+
+def create_real_db_client_fixture(user_fixture_name):
+    """Like create_client_fixture, but bound to `real_db` instead of `db`.
+
+    For broadcast pipeline integration tests that exercise Celery-eager
+    tasks/publishers opening their own DB session — see the `real_db` fixture
+    docstring for why the standard `db` fixture can't be used there.
+    """
+
+    @pytest.fixture(scope="function")
+    def client_fixture(real_db, request):
+        test_user = request.getfixturevalue(user_fixture_name)
+
+        def override_get_db():
+            try:
+                yield real_db
+            finally:
+                pass
+
+        app = create_app(testing=True, auth_middleware=MockAuthenticationMiddleware)
+        app.state.test_user = test_user
+        app.dependency_overrides[get_db] = override_get_db
+
+        test_client = TestClient(app)
+        test_client.headers.update({"Authorization": "Bearer mock_token"})
+
+        yield test_client
+
+        delattr(app.state, "test_user")
+        app.dependency_overrides.clear()
+
+    return client_fixture
+
+
+broadcast_client = create_real_db_client_fixture("setup_user")
 
 
 class MockAuthenticationMiddleware(BaseHTTPMiddleware):

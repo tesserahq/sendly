@@ -26,6 +26,17 @@ celery_app.conf.update(
 
 celery_app.autodiscover_tasks(["app.tasks"])  # ensure tasks are registered explicitly
 
+celery_app.conf.beat_schedule = {
+    "broadcast-prepare-recovery-sweep": {
+        "task": "app.tasks.prepare_recovery_sweep",
+        "schedule": 60.0,
+    },
+    "broadcast-outbox-recovery-sweep": {
+        "task": "app.tasks.outbox_recovery_sweep",
+        "schedule": 60.0,
+    },
+}
+
 # # Explicitly register tasks to ensure they're available
 # def register_tasks():
 #     """Explicitly import tasks to ensure registration."""

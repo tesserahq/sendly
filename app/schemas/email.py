@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional, Dict, Any
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, Dict, Any, List
 from uuid import UUID
 from datetime import datetime
 
@@ -87,6 +87,22 @@ class EmailBase(BaseModel):
 
     project_id: Optional[UUID] = None
     """Project ID that owns this email. Optional field."""
+
+    batch_id: Optional[str] = None
+    """Broadcast batch this email belongs to, if any. Never caller-settable directly."""
+
+    tags: Optional[List[str]] = None
+    """Free-form caller-supplied tags for campaign/filtering purposes."""
+
+    metadata_: Optional[Dict[str, Any]] = Field(
+        default=None, serialization_alias="metadata"
+    )
+    """Free-form caller-supplied metadata. DB column is named "metadata"; the
+    Python/schema attribute is "metadata_" because "metadata" is reserved on
+    the SQLAlchemy declarative Base. Only a *serialization* alias is used
+    (not a validation alias) — from_attributes extraction resolves attribute
+    names via alias too, which would otherwise read Base.metadata (the
+    SQLAlchemy MetaData registry) instead of the actual column value."""
 
 
 class EmailCreate(EmailBase):

@@ -27,3 +27,92 @@ class TestEmailRouter:
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "not found" in response.json()["detail"].lower()
+
+    def test_list_emails_filters_by_batch_id(self, client, db, faker):
+        from app.models.email import Email
+
+        batch_id = str(uuid4())
+        matching = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Broadcast",
+            body="Body",
+            status="queued",
+            provider="postmark",
+            batch_id=batch_id,
+        )
+        other = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Other",
+            body="Body",
+            status="queued",
+            provider="postmark",
+            batch_id=str(uuid4()),
+        )
+        db.add_all([matching, other])
+        db.commit()
+
+        response = client.get("/emails", params={"batch_id": batch_id})
+
+        assert response.status_code == status.HTTP_200_OK
+        ids = [item["id"] for item in response.json()["items"]]
+        assert str(matching.id) in ids
+        assert str(other.id) not in ids
+
+    def test_list_emails_filters_by_tag(self, client, db, faker):
+        from app.models.email import Email
+
+        tagged = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Tagged",
+            body="Body",
+            status="queued",
+            provider="postmark",
+            tags=["campaign-x", "vip"],
+        )
+        untagged = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Untagged",
+            body="Body",
+            status="queued",
+            provider="postmark",
+            tags=["other-tag"],
+        )
+        db.add_all([tagged, untagged])
+        db.commit()
+
+        response = client.get("/emails", params={"tag": "campaign-x"})
+
+        assert response.status_code == status.HTTP_200_OK
+        ids = [item["id"] for item in response.json()["items"]]
+        assert str(tagged.id) in ids
+        assert str(untagged.id) not in ids
+
+    def test_email_response_includes_tags_and_metadata(self, client, db, faker):
+        from app.models.email import Email
+
+        email = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Subject",
+            body="Body",
+            status="queued",
+            provider="postmark",
+            batch_id="batch-123",
+            tags=["a", "b"],
+            metadata_={"campaign": "spring"},
+        )
+        db.add(email)
+        db.commit()
+        db.refresh(email)
+
+        response = client.get(f"/emails/{email.id}")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["batch_id"] == "batch-123"
+        assert data["tags"] == ["a", "b"]
+        assert data["metadata"] == {"campaign": "spring"}

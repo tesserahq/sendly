@@ -9,6 +9,7 @@ from app.db import get_db
 from app.commands.send_email_command import SendEmailCommand
 from app.providers.base import EmailCreateRequest
 from app.schemas.email import Email
+from app.models.email import Email as EmailModel
 from app.repositories.email_repository import EmailRepository
 from app.auth.rbac import build_rbac_dependencies
 from fastapi import Request
@@ -95,6 +96,14 @@ def list_emails(
         Optional[UUID],
         Query(description="Project ID to filter emails by"),
     ] = None,
+    batch_id: Annotated[
+        Optional[str],
+        Query(description="Filter by broadcast batch_id"),
+    ] = None,
+    tag: Annotated[
+        Optional[str],
+        Query(description="Filter by exact tag membership"),
+    ] = None,
     db: Session = Depends(get_db),
     params: Params = Depends(),
     _authorized: bool = Depends(rbac["read"]),
@@ -104,6 +113,8 @@ def list_emails(
 
     Args:
         project_id: The UUID of the project
+        batch_id: Optional broadcast batch_id filter
+        tag: Optional exact tag filter
         db: Database session
         params: Pagination parameters
 
@@ -119,5 +130,10 @@ def list_emails(
         query = email_repository.get_emails_by_project_query(project_id)
     else:
         query = email_repository.get_emails_query()
+
+    if batch_id:
+        query = query.filter(EmailModel.batch_id == batch_id)
+    if tag:
+        query = query.filter(EmailModel.tags.contains([tag]))
 
     return paginate(query, params)
