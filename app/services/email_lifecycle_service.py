@@ -80,7 +80,7 @@ class EmailLifecycleService:
             occurred_at=occurred_at,
             details=raw_payload,
         )
-        self._maybe_advance_status(email, event_type)
+        self._advance_status_and_opened_at(email, event_type, occurred_at)
 
     # ------------------------------------------------------------------
     # Send path (SendEmailCommand)
@@ -193,12 +193,21 @@ class EmailLifecycleService:
             )
         )
 
-    def _maybe_advance_status(self, email: Email, event_type: str) -> None:
+    def _advance_status_and_opened_at(
+        self, email: Email, event_type: str, occurred_at: datetime
+    ) -> None:
         new_status = _WEBHOOK_EVENT_TO_STATUS.get(event_type)
-        if new_status is None:
-            return  # unknown event type — event row was written, status unchanged
-        if email.status in _TERMINAL_STATUSES:
-            return  # already terminal; never overwrite
-        if new_status == email.status:
-            return  # no-op
-        self._repo.update_email(email.id, EmailUpdate(status=new_status))
+        if new_status is not None and (
+            email.status in _TERMINAL_STATUSES or new_status == email.status
+        ):
+            new_status = None  # no-op / already terminal; never overwrite
+
+        fields: dict[str, Any] = {}
+        if new_status is not None:
+            fields["status"] = new_status
+        if event_type == "opened" and email.opened_at is None:
+            fields["opened_at"] = occurred_at
+
+        if not fields:
+            return
+        self._repo.update_email(email.id, EmailUpdate(**fields))

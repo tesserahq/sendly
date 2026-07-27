@@ -23,6 +23,7 @@ def _build_message(req: EmailCreateRequest) -> Dict[str, Any]:
         "Subject": req.subject,
         "HtmlBody": req.html,
         "TextBody": req.text,
+        "TrackOpens": True,
     }
     if req.custom_headers:
         message["Headers"] = [

@@ -132,6 +132,9 @@ class EmailUpdate(BaseModel):
     sent_at: Optional[datetime] = None
     """Updated sent timestamp."""
 
+    opened_at: Optional[datetime] = None
+    """Updated first-opened timestamp."""
+
     provider_message_id: Optional[str] = None
     """Updated provider message ID."""
 
@@ -147,6 +150,9 @@ class EmailInDB(EmailBase):
 
     sent_at: Optional[datetime] = None
     """Timestamp when the email was sent to the provider."""
+
+    opened_at: Optional[datetime] = None
+    """Timestamp when the email was first opened, if ever. System-set only."""
 
     error_message: Optional[str] = None
     """Error message if email sending failed."""
