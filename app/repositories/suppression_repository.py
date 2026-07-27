@@ -38,6 +38,19 @@ class SuppressionRepository(SoftDeleteRepository[EmailSuppression]):
         )
         return {row[0] for row in rows}
 
+    def is_suppressed_bulk_any_project(self, emails: List[str]) -> Set[str]:
+        """Like is_suppressed_bulk, but for global (no project_id) broadcasts:
+        a recipient suppressed in ANY project is skipped, since there's no
+        single project's opt-out list to check against."""
+        if not emails:
+            return set()
+        rows = (
+            self.db.query(EmailSuppression.email)
+            .filter(EmailSuppression.email.in_(emails))
+            .all()
+        )
+        return {row[0] for row in rows}
+
     def create_or_update_suppression(
         self,
         *,

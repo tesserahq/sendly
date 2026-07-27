@@ -13,7 +13,7 @@ class BroadcastBatch(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "broadcast_batches"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = Column(UUID(as_uuid=True), nullable=False)
+    project_id = Column(UUID(as_uuid=True), nullable=True)
     batch_id = Column(String, nullable=False)
     idempotency_key = Column(String, nullable=True)
     request_fingerprint = Column(String, nullable=True)

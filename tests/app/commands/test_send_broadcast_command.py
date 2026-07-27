@@ -244,3 +244,62 @@ class TestSendBroadcastCommand:
             SendBroadcastCommand(db).execute(different_req)
 
         assert exc_info.value.status_code == 409
+
+
+class TestGlobalBroadcast:
+    """project_id is optional to support org-wide (not project-scoped)
+    broadcasts. These pass project_id=None through _make_request and check
+    that suppression/idempotency logic — normally project_id-scoped — has
+    an explicit branch for the global case instead of silently no-op'ing."""
+
+    def test_creates_batch_with_null_project_id(self, db):
+        req = _make_request(None)
+        batch = SendBroadcastCommand(db).execute(req)
+        assert batch.project_id is None
+        assert batch.queued_count == 2
+
+    def test_excludes_recipient_suppressed_in_any_project(self, db):
+        other_project = uuid4()
+        db.add(
+            EmailSuppression(
+                project_id=other_project,
+                email="b@example.com",
+                unsubscribed_at="2026-01-01T00:00:00+00:00",
+                source="test",
+            )
+        )
+        db.commit()
+
+        req = _make_request(None)
+        batch = SendBroadcastCommand(db).execute(req)
+
+        assert batch.queued_count == 1
+        assert batch.suppressed_count == 1
+
+    def test_idempotency_key_returns_original_result_for_global_batch(self, db):
+        req = _make_request(None, idempotency_key="global-key")
+
+        first = SendBroadcastCommand(db).execute(req)
+        second = SendBroadcastCommand(db).execute(req)
+
+        assert first.id == second.id
+        assert (
+            db.query(BroadcastRecipient)
+            .filter(BroadcastRecipient.broadcast_batch_id == first.id)
+            .count()
+            == 2
+        )
+
+    def test_global_idempotency_key_is_independent_from_project_scoped_key(self, db):
+        """A global batch (project_id=None) and a project-scoped batch must
+        not collide on the same idempotency_key — regression test for the
+        NULL-never-equals-NULL SQL pitfall in
+        BroadcastRepository.get_batch_by_idempotency_key."""
+        project_id = uuid4()
+        project_req = _make_request(project_id, idempotency_key="shared-key")
+        global_req = _make_request(None, idempotency_key="shared-key")
+
+        project_batch = SendBroadcastCommand(db).execute(project_req)
+        global_batch = SendBroadcastCommand(db).execute(global_req)
+
+        assert project_batch.id != global_batch.id

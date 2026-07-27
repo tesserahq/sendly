@@ -105,6 +105,19 @@ class TestSendBroadcast:
         )
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
+    def test_omitting_project_id_creates_a_global_broadcast(self, broadcast_client):
+        """project_id is optional to support org-wide, non-project-scoped
+        broadcasts (requires a "*"-domain RBAC grant in Custos, mocked as
+        always-authorized in tests)."""
+        payload = _payload(uuid4())
+        del payload["project_id"]
+
+        with patched_providers():
+            response = broadcast_client.post("/broadcasts/send", json=payload)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["queued_count"] == 2
+
 
 class TestGetBroadcast:
     def test_get_broadcast_reports_prepared_count(self, broadcast_client):
@@ -258,3 +271,30 @@ class TestGetBroadcast:
 
         assert response.status_code == status.HTTP_200_OK
         assert captured_domains == [str(real_project_id)]
+
+    def test_get_broadcast_for_global_batch_authorizes_against_wildcard_domain(
+        self, broadcast_client
+    ):
+        """A global batch (project_id=None) has no real project_id to
+        authorize against, so the read check must fall back to the same
+        "*" wildcard domain used to authorize sending it — not str(None)."""
+        payload = _payload(uuid4())
+        del payload["project_id"]
+        with patched_providers():
+            send_response = broadcast_client.post("/broadcasts/send", json=payload)
+        batch_id = send_response.json()["batch_id"]
+
+        captured_domains = []
+
+        def fake_authorize(*, resource, action, domain_resolver):
+            async def dependency(request):
+                captured_domains.append(await domain_resolver(request))
+                return True
+
+            return dependency
+
+        with patch("app.routers.broadcast.authorize", side_effect=fake_authorize):
+            response = broadcast_client.get(f"/broadcasts/{batch_id}")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert captured_domains == ["*"]

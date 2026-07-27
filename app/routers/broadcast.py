@@ -95,7 +95,9 @@ async def get_broadcast(
     check_read = authorize(
         resource=f"{PREFIX}.{RESOURCE}",
         action=RBACActions.READ,
-        domain_resolver=fixed_domain_resolver(str(batch.project_id)),
+        domain_resolver=fixed_domain_resolver(
+            str(batch.project_id) if batch.project_id is not None else "*"
+        ),
     )
     await check_read(request)
 

@@ -22,12 +22,21 @@ class BroadcastRepository:
         )
 
     def get_batch_by_idempotency_key(
-        self, project_id: UUID, idempotency_key: str
+        self, project_id: Optional[UUID], idempotency_key: str
     ) -> Optional[BroadcastBatch]:
+        # project_id = NULL never matches in SQL, so a global (no
+        # project_id) broadcast needs an explicit IS NULL branch here or
+        # idempotency replay would silently create a duplicate batch every
+        # time instead of returning the existing one.
+        project_filter = (
+            BroadcastBatch.project_id.is_(None)
+            if project_id is None
+            else BroadcastBatch.project_id == project_id
+        )
         return (
             self.db.query(BroadcastBatch)
             .filter(
-                BroadcastBatch.project_id == project_id,
+                project_filter,
                 BroadcastBatch.idempotency_key == idempotency_key,
             )
             .first()
@@ -46,7 +55,7 @@ class BroadcastRepository:
     def create_batch(
         self,
         *,
-        project_id: UUID,
+        project_id: Optional[UUID],
         batch_id: str,
         idempotency_key: Optional[str],
         request_fingerprint: str,
