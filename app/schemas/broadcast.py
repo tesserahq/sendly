@@ -21,9 +21,13 @@ class BroadcastCreateRequest(BaseModel):
     Reuses the same content options /emails already supports; batch_id, cc,
     bcc, and priority are intentionally absent — Sendly generates batch_id
     and cc/bcc have no coherent per-recipient meaning for a fan-out send.
+
+    project_id is omitted for a global (org-wide, not tenant-scoped)
+    broadcast — requires a "*"-domain grant in Custos; see infer_project
+    in app/routers/broadcast.py.
     """
 
-    project_id: UUID
+    project_id: Optional[UUID] = None
     from_email: Optional[EmailStr] = None
     subject: Optional[str] = None
     html: Optional[str] = None

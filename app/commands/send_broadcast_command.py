@@ -75,9 +75,16 @@ class SendBroadcastCommand:
                 return existing
 
         emails = [str(recipient.email) for recipient in req.recipients]
-        suppressed_emails = self.suppression_repo.is_suppressed_bulk(
-            req.project_id, emails
-        )
+        if req.project_id is None:
+            # Global broadcast: no single project's suppression list applies,
+            # so a recipient suppressed in ANY project is skipped.
+            suppressed_emails = self.suppression_repo.is_suppressed_bulk_any_project(
+                emails
+            )
+        else:
+            suppressed_emails = self.suppression_repo.is_suppressed_bulk(
+                req.project_id, emails
+            )
 
         batch_id = str(uuid.uuid4())
         queued_count = len(emails) - len(suppressed_emails)

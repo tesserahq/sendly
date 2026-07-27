@@ -70,9 +70,15 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> N
     # Recheck suppression: a recipient suppressed between acceptance and this
     # task still gets skipped, even though it wasn't flagged suppressed at
     # accept time.
-    still_suppressed = suppression_repo.is_suppressed_bulk(
-        batch.project_id, [recipient.email for recipient in recipients]
-    )
+    recipient_emails = [recipient.email for recipient in recipients]
+    if batch.project_id is None:
+        still_suppressed = suppression_repo.is_suppressed_bulk_any_project(
+            recipient_emails
+        )
+    else:
+        still_suppressed = suppression_repo.is_suppressed_bulk(
+            batch.project_id, recipient_emails
+        )
 
     prepared_ids: List[UUID] = []
     created_email_ids: List[UUID] = []
