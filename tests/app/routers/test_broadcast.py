@@ -91,6 +91,20 @@ class TestSendBroadcast:
 
         assert response.status_code == status.HTTP_409_CONFLICT
 
+    def test_missing_subject_is_rejected_immediately(self, broadcast_client):
+        project_id = uuid4()
+        response = broadcast_client.post(
+            "/broadcasts/send", json=_payload(project_id, subject=None)
+        )
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    def test_empty_recipients_is_rejected(self, broadcast_client):
+        project_id = uuid4()
+        response = broadcast_client.post(
+            "/broadcasts/send", json=_payload(project_id, recipients=[])
+        )
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
 
 class TestGetBroadcast:
     def test_get_broadcast_reports_prepared_count(self, broadcast_client):
@@ -110,6 +124,66 @@ class TestGetBroadcast:
         assert data["batch_id"] == batch_id
         assert data["queued_count"] == 2
         assert data["prepared_count"] == 2
+        assert data["finished"] is True
+
+    def test_get_broadcast_not_finished_until_send_stage_runs(self, broadcast_client):
+        """Prepare-only: every Email/outbox row exists but nothing sent yet."""
+        project_id = uuid4()
+        with (
+            patch(
+                "app.tasks.prepare_broadcast_chunk_task.get_default_provider"
+            ) as prep,
+            patch("app.tasks.prepare_broadcast_chunk_task.BroadcastOutboxPublisher"),
+        ):
+            prep.return_value.provider_id = "postmark"
+            send_response = broadcast_client.post(
+                "/broadcasts/send", json=_payload(project_id)
+            )
+        batch_id = send_response.json()["batch_id"]
+
+        response = broadcast_client.get(
+            f"/broadcasts/{batch_id}", params={"project_id": str(project_id)}
+        )
+
+        data = response.json()
+        assert data["prepared_count"] == 2
+        assert data["finished"] is False
+
+    def test_get_broadcast_finished_immediately_when_fully_suppressed(
+        self, broadcast_client, real_db
+    ):
+        from datetime import datetime, timezone
+
+        from app.models.email_suppression import EmailSuppression
+
+        project_id = uuid4()
+        real_db.add(
+            EmailSuppression(
+                project_id=project_id,
+                email="suppressed@example.com",
+                unsubscribed_at=datetime.now(timezone.utc),
+                source="test",
+            )
+        )
+        real_db.commit()
+
+        response = broadcast_client.post(
+            "/broadcasts/send",
+            json=_payload(
+                project_id,
+                recipients=[{"email": "suppressed@example.com"}],
+            ),
+        )
+        batch_id = response.json()["batch_id"]
+        assert response.json()["queued_count"] == 0
+        assert response.json()["suppressed_count"] == 1
+
+        status_response = broadcast_client.get(
+            f"/broadcasts/{batch_id}", params={"project_id": str(project_id)}
+        )
+        data = status_response.json()
+        assert data["prepared_count"] == 0
+        assert data["finished"] is True
 
     def test_get_broadcast_not_found(self, broadcast_client):
         response = broadcast_client.get(
@@ -117,7 +191,26 @@ class TestGetBroadcast:
         )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_get_broadcast_scoped_by_project(self, broadcast_client):
+    def test_get_broadcast_does_not_require_project_id(self, broadcast_client):
+        """batch_id is server-generated and globally unique — a caller with a
+        global/super-admin RBAC grant can query it without project_id, same
+        as GET /emails/{id} already allows."""
+        project_id = uuid4()
+        with patched_providers():
+            send_response = broadcast_client.post(
+                "/broadcasts/send", json=_payload(project_id)
+            )
+        batch_id = send_response.json()["batch_id"]
+
+        response = broadcast_client.get(f"/broadcasts/{batch_id}")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["batch_id"] == batch_id
+
+    def test_get_broadcast_lookup_ignores_mismatched_project_id(self, broadcast_client):
+        """batch_id alone determines identity — passing an unrelated
+        project_id (e.g. for RBAC scoping purposes only) doesn't affect
+        which batch is returned."""
         project_id = uuid4()
         other_project_id = uuid4()
         with patched_providers():
@@ -129,4 +222,39 @@ class TestGetBroadcast:
         response = broadcast_client.get(
             f"/broadcasts/{batch_id}", params={"project_id": str(other_project_id)}
         )
-        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["batch_id"] == batch_id
+
+    def test_get_broadcast_authorizes_against_actual_project_not_caller_supplied(
+        self, broadcast_client
+    ):
+        """Regression test for an IDOR: authorization must be checked against
+        the batch's real project_id, never a caller-supplied one — otherwise
+        a caller could read another project's batch by passing their own
+        (validly-authorized) project_id in the query string, since batch_id
+        alone no longer scopes the DB lookup."""
+        real_project_id = uuid4()
+        someone_elses_project_id = uuid4()
+        with patched_providers():
+            send_response = broadcast_client.post(
+                "/broadcasts/send", json=_payload(real_project_id)
+            )
+        batch_id = send_response.json()["batch_id"]
+
+        captured_domains = []
+
+        def fake_authorize(*, resource, action, domain_resolver):
+            async def dependency(request):
+                captured_domains.append(await domain_resolver(request))
+                return True
+
+            return dependency
+
+        with patch("app.routers.broadcast.authorize", side_effect=fake_authorize):
+            response = broadcast_client.get(
+                f"/broadcasts/{batch_id}",
+                params={"project_id": str(someone_elses_project_id)},
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert captured_domains == [str(real_project_id)]

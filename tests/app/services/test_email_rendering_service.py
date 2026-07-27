@@ -12,6 +12,7 @@ import pytest
 
 from app.providers.base import EmailCreateRequest
 from app.services.email_rendering_service import (
+    ConflictingContentError,
     EmailRenderingService,
     MissingFieldError,
     TemplateNotFoundError,
@@ -165,3 +166,59 @@ class TestRender:
     def test_year_is_available_by_default(self):
         result = EmailRenderingService.render("${year}")
         assert result.isdigit()
+
+
+class TestValidate:
+    """validate() checks content-level requirements without rendering — no
+    recipient-specific data needed, so it's safe to run once up front."""
+
+    def test_inline_html_missing_subject_raises(self):
+        service = EmailRenderingService(db=MagicMock())
+        req = _make_req(html="<p>hi</p>", from_email="from@example.com")
+        with pytest.raises(MissingFieldError):
+            service.validate(req)
+
+    def test_inline_html_missing_from_email_raises(self):
+        service = EmailRenderingService(db=MagicMock())
+        req = _make_req(html="<p>hi</p>", subject="Subject")
+        with pytest.raises(MissingFieldError):
+            service.validate(req)
+
+    def test_neither_template_nor_inline_raises(self):
+        service = EmailRenderingService(db=MagicMock())
+        req = _make_req()
+        with pytest.raises(MissingFieldError):
+            service.validate(req)
+
+    def test_both_template_and_inline_raises(self):
+        service = EmailRenderingService(db=MagicMock())
+        req = _make_req(html="<p>hi</p>", template_alias="welcome")
+        with pytest.raises(ConflictingContentError):
+            service.validate(req)
+
+    def test_unresolvable_template_raises(self):
+        with patch(
+            "app.services.email_rendering_service.TemplateRepository"
+        ) as MockRepo:
+            MockRepo.return_value.get_template_by_alias.return_value = None
+            service = EmailRenderingService(db=MagicMock())
+            req = _make_req(template_alias="nonexistent")
+            with pytest.raises(TemplateNotFoundError):
+                service.validate(req)
+
+    def test_valid_inline_html_passes(self):
+        service = EmailRenderingService(db=MagicMock())
+        req = _make_req(
+            html="<p>hi</p>", subject="Subject", from_email="from@example.com"
+        )
+        service.validate(req)  # does not raise
+
+    def test_valid_template_passes(self):
+        template = _make_template()
+        with patch(
+            "app.services.email_rendering_service.TemplateRepository"
+        ) as MockRepo:
+            MockRepo.return_value.get_template.return_value = template
+            service = EmailRenderingService(db=MagicMock())
+            req = _make_req(template_id="00000000-0000-0000-0000-000000000000")
+            service.validate(req)  # does not raise

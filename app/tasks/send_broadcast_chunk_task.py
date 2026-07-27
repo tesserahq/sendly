@@ -16,7 +16,6 @@ from typing import List
 from uuid import UUID
 
 from app.core.celery_app import celery_app
-from app.db import SessionLocal
 from app.providers.base import Attachment, EmailCreateRequest
 from app.providers.registry import get_default_provider
 from app.repositories.email_delivery_payload_repository import (
@@ -26,22 +25,21 @@ from app.repositories.email_repository import EmailRepository
 from app.repositories.email_send_outbox_repository import EmailSendOutboxRepository
 from app.repositories.suppression_repository import SuppressionRepository
 from app.services.email_lifecycle_service import EmailLifecycleService
+from app.utils.db.db_session_helper import db_session
 
 logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name="app.tasks.send_broadcast_chunk_task", bind=True, max_retries=3)
 def send_broadcast_chunk_task(self, email_ids: List[str]) -> None:
-    db = SessionLocal()
     try:
-        _send_chunk(db, [UUID(i) for i in email_ids])
+        with db_session() as db:
+            _send_chunk(db, [UUID(i) for i in email_ids])
     except Exception as exc:
         logger.exception(
             "send_broadcast_chunk_task transport failure; retrying whole chunk"
         )
         raise self.retry(exc=exc, countdown=30)
-    finally:
-        db.close()
 
 
 def _send_chunk(db, email_ids: List[UUID]) -> None:

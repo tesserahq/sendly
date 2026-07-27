@@ -33,15 +33,13 @@ class BroadcastRepository:
             .first()
         )
 
-    def get_batch_by_batch_id(
-        self, project_id: UUID, batch_id: str
-    ) -> Optional[BroadcastBatch]:
+    def get_batch_by_batch_id(self, batch_id: str) -> Optional[BroadcastBatch]:
+        """batch_id is server-generated (a UUID) and globally unique — no
+        project_id scoping needed, unlike idempotency_key (caller-chosen,
+        legitimately reused across different projects/callers)."""
         return (
             self.db.query(BroadcastBatch)
-            .filter(
-                BroadcastBatch.project_id == project_id,
-                BroadcastBatch.batch_id == batch_id,
-            )
+            .filter(BroadcastBatch.batch_id == batch_id)
             .first()
         )
 

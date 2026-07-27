@@ -3,9 +3,14 @@ import sys
 import socket
 
 from app.core.celery_app import celery_app
+from prometheus_client import start_http_server
 
 
 def main():
+    metrics_port = int(os.getenv("METRICS_PORT", "9100"))
+
+    start_http_server(metrics_port)
+
     loglevel = os.getenv("CELERY_LOGLEVEL", "info")
     # macOS often hits fork-related segfaults with the default prefork pool
     default_pool = "solo" if sys.platform == "darwin" else "prefork"

@@ -19,9 +19,14 @@ def mock_authorize(*args, **kwargs):
     """
     Mock authorize function that returns a dependency always returning True.
     This mocks tessera_sdk.server.dependencies.authorization.authorize globally.
+
+    Mirrors the real dependency's signature (a single `request` param) —
+    some routes call the returned dependency directly (not via FastAPI's
+    Depends()) after loading a resource, to authorize against that
+    resource's actual project_id rather than a caller-supplied one.
     """
 
-    async def always_authorized():
+    async def always_authorized(request=None):
         return True
 
     return always_authorized

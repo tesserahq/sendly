@@ -34,6 +34,19 @@ class EmailSendOutboxRepository:
             .all()
         )
 
+    def count_pending_for_batch(self, batch_id: str) -> int:
+        """Outbox rows still missing processed_at for one broadcast batch —
+        used to tell whether the send stage has finished for that batch."""
+        return (
+            self.db.query(EmailSendOutbox)
+            .join(Email, Email.id == EmailSendOutbox.email_id)
+            .filter(
+                EmailSendOutbox.processed_at.is_(None),
+                Email.batch_id == batch_id,
+            )
+            .count()
+        )
+
     def mark_processed(self, email_ids: Sequence[UUID]) -> None:
         if not email_ids:
             return

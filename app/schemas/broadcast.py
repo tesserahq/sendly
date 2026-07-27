@@ -36,7 +36,7 @@ class BroadcastCreateRequest(BaseModel):
     idempotency_key: Optional[str] = None
     tags: Optional[List[str]] = None
     metadata: Optional[Dict[str, Any]] = None
-    recipients: List[BroadcastRecipient]
+    recipients: List[BroadcastRecipient] = Field(min_length=1)
 
 
 class ContentSpec(BaseModel):
@@ -92,3 +92,9 @@ class BroadcastStatusResponse(BaseModel):
     queued_count: int
     suppressed_count: int
     prepared_count: int
+    finished: bool
+    """True once the send stage has been attempted for every queued
+    recipient (prepared_count == queued_count and no outbox entries for
+    this batch are still pending). Does not track post-send webhook
+    updates (opened/clicked/bounced, etc.) — those keep updating individual
+    Email rows independently, same as single-send, indefinitely."""

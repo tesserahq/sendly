@@ -13,6 +13,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.commands.send_broadcast_command import SendBroadcastCommand
+from app.models.broadcast_batch import BroadcastBatch
 from app.models.broadcast_recipient import BroadcastRecipient
 from app.models.email import Email
 from app.models.email_suppression import EmailSuppression
@@ -43,6 +44,63 @@ def _make_request(project_id, **overrides):
     )
     defaults.update(overrides)
     return BroadcastCreateRequest(**defaults)
+
+
+class TestContentValidation:
+    """Content-level mistakes affect every recipient identically, so they're
+    rejected up front instead of silently failing each recipient, one by
+    one, deep in the async prepare stage."""
+
+    def test_missing_subject_with_inline_html_is_rejected(self, db):
+        req = _make_request(uuid4(), subject=None)
+        with pytest.raises(HTTPException) as exc_info:
+            SendBroadcastCommand(db).execute(req)
+        assert exc_info.value.status_code == 422
+        assert "subject" in exc_info.value.detail.lower()
+        assert db.query(BroadcastBatch).count() == 0
+
+    def test_missing_from_email_with_inline_html_is_rejected(self, db):
+        req = _make_request(uuid4(), from_email=None)
+        with pytest.raises(HTTPException) as exc_info:
+            SendBroadcastCommand(db).execute(req)
+        assert exc_info.value.status_code == 422
+        assert "from_email" in exc_info.value.detail.lower()
+
+    def test_missing_html_and_template_is_rejected(self, db):
+        req = _make_request(uuid4(), html=None)
+        with pytest.raises(HTTPException) as exc_info:
+            SendBroadcastCommand(db).execute(req)
+        assert exc_info.value.status_code == 422
+
+    def test_both_template_and_inline_html_is_rejected(self, db):
+        req = _make_request(uuid4(), template_alias="welcome")
+        with pytest.raises(HTTPException) as exc_info:
+            SendBroadcastCommand(db).execute(req)
+        assert exc_info.value.status_code == 400
+
+    def test_unresolvable_template_is_rejected(self, db):
+        req = _make_request(uuid4(), html=None, template_alias="nonexistent")
+        with pytest.raises(HTTPException) as exc_info:
+            SendBroadcastCommand(db).execute(req)
+        assert exc_info.value.status_code == 404
+
+    def test_valid_template_with_missing_from_email_is_rejected(self, db, faker):
+        from app.models.template import Template
+
+        template = Template(
+            alias=faker.slug(),
+            subject="Hi ${first_name}",
+            html="<p>Hi ${first_name}</p>",
+        )
+        db.add(template)
+        db.commit()
+
+        req = _make_request(
+            uuid4(), html=None, from_email=None, template_alias=template.alias
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            SendBroadcastCommand(db).execute(req)
+        assert exc_info.value.status_code == 422
 
 
 class TestSendBroadcastCommand:

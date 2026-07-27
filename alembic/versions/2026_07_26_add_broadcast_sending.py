@@ -82,9 +82,9 @@ def upgrade() -> None:
         "ix_broadcast_batches_deleted_at", "broadcast_batches", ["deleted_at"]
     )
     op.create_index(
-        "uq_broadcast_batches_project_batch_active",
+        "uq_broadcast_batches_batch_id_active",
         "broadcast_batches",
-        ["project_id", "batch_id"],
+        ["batch_id"],
         unique=True,
         postgresql_where=sa.text("deleted_at IS NULL"),
     )
@@ -203,7 +203,7 @@ def downgrade() -> None:
         table_name="broadcast_batches",
     )
     op.drop_index(
-        "uq_broadcast_batches_project_batch_active", table_name="broadcast_batches"
+        "uq_broadcast_batches_batch_id_active", table_name="broadcast_batches"
     )
     op.drop_index("ix_broadcast_batches_deleted_at", table_name="broadcast_batches")
     op.drop_table("broadcast_batches")

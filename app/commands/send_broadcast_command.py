@@ -26,6 +26,12 @@ from app.schemas.broadcast import (
     ContentSpec,
 )
 from app.services.broadcast_prepare_publisher import BroadcastPreparePublisher
+from app.services.email_rendering_service import (
+    ConflictingContentError,
+    EmailRenderingService,
+    MissingFieldError,
+    TemplateNotFoundError,
+)
 
 
 class SendBroadcastCommand:
@@ -33,9 +39,24 @@ class SendBroadcastCommand:
         self.db = db
         self.broadcast_repo = BroadcastRepository(db)
         self.suppression_repo = SuppressionRepository(db)
+        self.rendering = EmailRenderingService(db)
 
     def execute(self, req: BroadcastCreateRequest) -> BroadcastBatch:
         content_spec = ContentSpec.from_request(req)
+
+        # Content-level mistakes (missing subject/html, unresolvable
+        # template) affect every recipient identically — validate once here
+        # so the caller gets an immediate 4xx instead of every recipient
+        # silently failing, one by one, deep in the async prepare stage.
+        try:
+            self.rendering.validate(content_spec)
+        except TemplateNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except ConflictingContentError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except MissingFieldError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
         fingerprint = self._fingerprint(content_spec, req.recipients)
 
         if req.idempotency_key:

@@ -15,7 +15,6 @@ from uuid import UUID
 from app.config import get_settings
 from app.constants.email import EmailStatus
 from app.core.celery_app import celery_app
-from app.db import SessionLocal
 from app.providers.base import EmailCreateRequest
 from app.providers.registry import get_default_provider
 from app.repositories.broadcast_repository import BroadcastRepository
@@ -34,6 +33,7 @@ from app.services.email_rendering_service import (
     TemplateNotFoundError,
     TemplateSyntaxError,
 )
+from app.utils.db.db_session_helper import db_session
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,8 @@ logger = logging.getLogger(__name__)
 def prepare_broadcast_chunk_task(
     broadcast_batch_id: str, recipient_ids: List[str]
 ) -> None:
-    db = SessionLocal()
-    try:
+    with db_session() as db:
         _prepare_chunk(db, UUID(broadcast_batch_id), [UUID(i) for i in recipient_ids])
-    finally:
-        db.close()
 
 
 def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> None:

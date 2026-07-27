@@ -1,15 +1,21 @@
 import json
 from json import JSONDecodeError
 from typing import Optional
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
+from tessera_sdk.server.dependencies.authorization import authorize
 
-from app.auth.rbac import build_rbac_dependencies
+from app.auth.rbac import (
+    PREFIX,
+    RBACActions,
+    build_rbac_dependencies,
+    fixed_domain_resolver,
+)
 from app.commands.send_broadcast_command import SendBroadcastCommand
 from app.db import get_db
 from app.repositories.broadcast_repository import BroadcastRepository
+from app.repositories.email_send_outbox_repository import EmailSendOutboxRepository
 from app.schemas.broadcast import (
     BroadcastCreateRequest,
     BroadcastSendResponse,
@@ -65,22 +71,46 @@ def send_broadcast(
 
 
 @router.get("/{batch_id}", response_model=BroadcastStatusResponse)
-def get_broadcast(
+async def get_broadcast(
     batch_id: str,
-    project_id: UUID = Query(..., description="Project ID that owns this batch"),
+    request: Request,
     db: Session = Depends(get_db),
-    _authorized: bool = Depends(rbac["read"]),
 ) -> BroadcastStatusResponse:
-    """Accept-time counts plus live prepare-stage progress for one batch."""
+    """Accept-time counts plus live prepare/send progress for one batch.
+
+    batch_id is server-generated and globally unique, so the DB lookup
+    below isn't scoped by project_id — but that means project_id can't be
+    trusted from the caller for authorization either. Instead, this loads
+    the batch first, then authorizes against its *actual* project_id.
+    Omitting project_id (or passing an unrelated one) no longer bypasses
+    tenant isolation: a caller is only authorized if they're allowed to
+    read `sendly.broadcast` in the batch's real project (or hold a
+    global/super-admin grant, via Custos's own domain semantics).
+    """
     repo = BroadcastRepository(db)
-    batch = repo.get_batch_by_batch_id(project_id, batch_id)
+    batch = repo.get_batch_by_batch_id(batch_id)
     if batch is None:
         raise HTTPException(status_code=404, detail="Broadcast batch not found")
 
+    check_read = authorize(
+        resource=f"{PREFIX}.{RESOURCE}",
+        action=RBACActions.READ,
+        domain_resolver=fixed_domain_resolver(str(batch.project_id)),
+    )
+    await check_read(request)
+
     prepared_count = repo.count_prepared(batch.id)
+    outbox_repo = EmailSendOutboxRepository(db)
+    pending_send_count = outbox_repo.count_pending_for_batch(batch.batch_id)
+    # Prepare must have created every expected Email row (or there'd be
+    # nothing yet for the send stage to have picked up), and every outbox
+    # entry it created must have been attempted.
+    finished = prepared_count == batch.queued_count and pending_send_count == 0
+
     return BroadcastStatusResponse(
         batch_id=batch.batch_id,
         queued_count=batch.queued_count,
         suppressed_count=batch.suppressed_count,
         prepared_count=prepared_count,
+        finished=finished,
     )
