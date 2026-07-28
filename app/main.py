@@ -23,6 +23,7 @@ from app.exceptions.handlers import register_exception_handlers
 from app.core.logging_config import get_logger
 from app.db import db_manager
 from prometheus_fastapi_instrumentator import Instrumentator
+from app.telemetry import _patch_fastapi_route_details
 
 SKIP_PATHS = ["/metrics", "/livez", "/readyz"]
 
@@ -118,6 +119,7 @@ app = create_app()
 settings = get_settings()
 if settings.otel_enabled:
     tracer_provider = setup_tracing()  # Or use env/config
+    _patch_fastapi_route_details()
     FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider)
     Instrumentator(
         excluded_handlers=["^/$", "/livez", "/readyz", "/metrics", "none"],
