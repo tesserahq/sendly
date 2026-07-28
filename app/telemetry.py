@@ -10,7 +10,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from starlette.routing import Match
-from opentelemetry.instrumentation.fastapi import otel_fastapi
+from opentelemetry.instrumentation import fastapi as otel_fastapi
 
 
 def _patch_fastapi_route_details() -> None:
