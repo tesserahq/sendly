@@ -18,8 +18,12 @@ class Template(Base, TimestampMixin, SoftDeleteMixin):
     from_email = Column(String, nullable=True)
     reply_to = Column(String, nullable=True)
     layout_id = Column(UUID(as_uuid=True), ForeignKey("layouts.id"), nullable=True)
+    created_by_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     layout = relationship("Layout", back_populates="templates")
+    created_by = relationship("User")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

@@ -5,6 +5,7 @@ from datetime import datetime
 from slugify import slugify
 
 from app.schemas.layout import Layout
+from app.schemas.user import UserSummary
 
 
 class TemplateBase(BaseModel):
@@ -61,3 +62,4 @@ class TemplateClone(BaseModel):
 
 class Template(TemplateInDB):
     layout: Optional[Layout] = None
+    created_by: Optional[UserSummary] = None

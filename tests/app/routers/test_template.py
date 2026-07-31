@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 
 class TestTemplateRouter:
-    def test_create_template(self, client):
+    def test_create_template(self, client, setup_user):
         response = client.post(
             "/templates",
             json={
@@ -19,6 +19,22 @@ class TestTemplateRouter:
         assert data["alias"] == "welcome-email"
         assert data["subject"] == "Welcome ${name}"
         assert "id" in data
+        assert data["created_by"]["id"] == str(setup_user.id)
+
+    def test_create_template_ignores_client_supplied_created_by_id(
+        self, client, setup_user
+    ):
+        response = client.post(
+            "/templates",
+            json={
+                "alias": "Spoofed Creator",
+                "subject": "Hi",
+                "html": "<p>hi</p>",
+                "created_by_id": str(uuid4()),
+            },
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.json()["created_by"]["id"] == str(setup_user.id)
 
     def test_create_template_slug_normalisation(self, client):
         response = client.post(

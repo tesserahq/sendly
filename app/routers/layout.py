@@ -3,8 +3,10 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import paginate
+from tessera_sdk.server.dependencies.auth import get_current_user
 
 from app.db import get_db
+from app.models.user import User
 from app.schemas.layout import Layout, LayoutCreate, LayoutUpdate
 from app.repositories.layout_repository import LayoutRepository
 from app.commands.layouts.create_layout_command import CreateLayoutCommand
@@ -27,9 +29,10 @@ rbac = build_rbac_dependencies(resource=RESOURCE, project_resolver=global_domain
 def create_layout(
     request: LayoutCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _authorized: bool = Depends(rbac["create"]),
 ) -> Layout:
-    return CreateLayoutCommand(db).execute(request)
+    return CreateLayoutCommand(db).execute(request, created_by_id=current_user.id)
 
 
 @router.get("", response_model=Page[Layout])

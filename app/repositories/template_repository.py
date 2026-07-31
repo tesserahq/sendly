@@ -14,7 +14,7 @@ class TemplateRepository(SoftDeleteRepository[Template]):
     def get_template(self, template_id: UUID) -> Optional[Template]:
         return (
             self.db.query(Template)
-            .options(selectinload(Template.layout))
+            .options(selectinload(Template.layout), selectinload(Template.created_by))
             .filter(Template.id == template_id)
             .first()
         )
@@ -22,7 +22,7 @@ class TemplateRepository(SoftDeleteRepository[Template]):
     def get_template_by_alias(self, alias: str) -> Optional[Template]:
         return (
             self.db.query(Template)
-            .options(selectinload(Template.layout))
+            .options(selectinload(Template.layout), selectinload(Template.created_by))
             .filter(Template.alias == alias)
             .first()
         )
@@ -30,15 +30,17 @@ class TemplateRepository(SoftDeleteRepository[Template]):
     def get_templates_query(self):
         return (
             self.db.query(Template)
-            .options(selectinload(Template.layout))
+            .options(selectinload(Template.layout), selectinload(Template.created_by))
             .order_by(Template.created_at.desc())
         )
 
     def get_templates(self, skip: int = 0, limit: int = 100) -> List[Template]:
         return self.db.query(Template).offset(skip).limit(limit).all()
 
-    def create_template(self, template: TemplateCreate) -> Template:
-        db_template = Template(**template.model_dump())
+    def create_template(
+        self, template: TemplateCreate, created_by_id: Optional[UUID] = None
+    ) -> Template:
+        db_template = Template(**template.model_dump(), created_by_id=created_by_id)
         self.db.add(db_template)
         self.db.commit()
         self.db.refresh(db_template)
