@@ -1,6 +1,6 @@
 from typing import List, Optional
 from uuid import UUID
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.layout import Layout
 from app.repositories.soft_delete_repository import SoftDeleteRepository
@@ -12,19 +12,35 @@ class LayoutRepository(SoftDeleteRepository[Layout]):
         super().__init__(db, Layout)
 
     def get_layout(self, layout_id: UUID) -> Optional[Layout]:
-        return self.db.query(Layout).filter(Layout.id == layout_id).first()
+        return (
+            self.db.query(Layout)
+            .options(selectinload(Layout.created_by))
+            .filter(Layout.id == layout_id)
+            .first()
+        )
 
     def get_layout_by_alias(self, alias: str) -> Optional[Layout]:
-        return self.db.query(Layout).filter(Layout.alias == alias).first()
+        return (
+            self.db.query(Layout)
+            .options(selectinload(Layout.created_by))
+            .filter(Layout.alias == alias)
+            .first()
+        )
 
     def get_layouts_query(self):
-        return self.db.query(Layout).order_by(Layout.created_at.desc())
+        return (
+            self.db.query(Layout)
+            .options(selectinload(Layout.created_by))
+            .order_by(Layout.created_at.desc())
+        )
 
     def get_layouts(self, skip: int = 0, limit: int = 100) -> List[Layout]:
         return self.db.query(Layout).offset(skip).limit(limit).all()
 
-    def create_layout(self, layout: LayoutCreate) -> Layout:
-        db_layout = Layout(**layout.model_dump())
+    def create_layout(
+        self, layout: LayoutCreate, created_by_id: Optional[UUID] = None
+    ) -> Layout:
+        db_layout = Layout(**layout.model_dump(), created_by_id=created_by_id)
         self.db.add(db_layout)
         self.db.commit()
         self.db.refresh(db_layout)

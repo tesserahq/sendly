@@ -3,8 +3,10 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import paginate
+from tessera_sdk.server.dependencies.auth import get_current_user
 
 from app.db import get_db
+from app.models.user import User
 from app.schemas.template import Template, TemplateClone, TemplateCreate, TemplateUpdate
 from app.repositories.template_repository import TemplateRepository
 from app.commands.templates.create_template_command import CreateTemplateCommand
@@ -28,9 +30,10 @@ rbac = build_rbac_dependencies(resource=RESOURCE, project_resolver=global_domain
 def create_template(
     request: TemplateCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _authorized: bool = Depends(rbac["create"]),
 ) -> Template:
-    return CreateTemplateCommand(db).execute(request)
+    return CreateTemplateCommand(db).execute(request, created_by_id=current_user.id)
 
 
 @router.get("", response_model=Page[Template])
@@ -57,9 +60,12 @@ def clone_template(
     template_id: UUID,
     request: TemplateClone = TemplateClone(),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     _authorized: bool = Depends(rbac["create"]),
 ) -> Template:
-    return CloneTemplateCommand(db).execute(template_id, request)
+    return CloneTemplateCommand(db).execute(
+        template_id, request, created_by_id=current_user.id
+    )
 
 
 @router.patch("/{template_id}", response_model=Template)

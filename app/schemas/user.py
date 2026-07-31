@@ -97,6 +97,27 @@ class User(UserInDB):
     pass
 
 
+class UserSummary(BaseModel):
+    """Minimal user info for embedding as a creator/reference on other resources."""
+
+    id: UUID
+    """Unique identifier for the user."""
+
+    email: Optional[EmailStr] = None
+    """User's email address."""
+
+    first_name: str
+    """User's first name."""
+
+    last_name: str
+    """User's last name."""
+
+    avatar_url: Optional[str] = None
+    """URL to the user's profile picture or avatar."""
+
+    model_config = {"from_attributes": True}
+
+
 class UserDetails(BaseModel):
     """Schema for detailed user information, typically used in profile views."""
 

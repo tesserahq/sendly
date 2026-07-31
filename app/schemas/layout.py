@@ -4,6 +4,8 @@ from uuid import UUID
 from datetime import datetime
 from slugify import slugify
 
+from app.schemas.user import UserSummary
+
 
 class LayoutBase(BaseModel):
     alias: str
@@ -40,4 +42,4 @@ class LayoutInDB(LayoutBase):
 
 
 class Layout(LayoutInDB):
-    pass
+    created_by: Optional[UserSummary] = None

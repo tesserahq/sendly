@@ -1,3 +1,5 @@
+from typing import Optional
+from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models.template import Template
@@ -9,5 +11,7 @@ class CreateTemplateCommand:
     def __init__(self, db: Session):
         self.repo = TemplateRepository(db)
 
-    def execute(self, req: TemplateCreate) -> Template:
-        return self.repo.create_template(req)
+    def execute(
+        self, req: TemplateCreate, created_by_id: Optional[UUID] = None
+    ) -> Template:
+        return self.repo.create_template(req, created_by_id=created_by_id)

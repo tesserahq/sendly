@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
 
@@ -12,7 +13,12 @@ class CloneTemplateCommand:
     def __init__(self, db: Session):
         self.repo = TemplateRepository(db)
 
-    def execute(self, template_id: UUID, req: TemplateClone) -> Template:
+    def execute(
+        self,
+        template_id: UUID,
+        req: TemplateClone,
+        created_by_id: Optional[UUID] = None,
+    ) -> Template:
         source = self.repo.get_template(template_id)
         if source is None:
             raise ResourceNotFoundError("Template not found")
@@ -36,4 +42,4 @@ class CloneTemplateCommand:
             reply_to=source.reply_to,
             layout_id=source.layout_id,
         )
-        return self.repo.create_template(clone_data)
+        return self.repo.create_template(clone_data, created_by_id=created_by_id)

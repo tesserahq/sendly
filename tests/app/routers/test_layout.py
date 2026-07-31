@@ -3,7 +3,7 @@ from fastapi import status
 
 
 class TestLayoutRouter:
-    def test_create_layout(self, client):
+    def test_create_layout(self, client, setup_user):
         response = client.post(
             "/layouts",
             json={"alias": "My Layout", "html": "<html>${content}</html>"},
@@ -13,6 +13,21 @@ class TestLayoutRouter:
         assert data["alias"] == "my-layout"
         assert data["html"] == "<html>${content}</html>"
         assert "id" in data
+        assert data["created_by"]["id"] == str(setup_user.id)
+
+    def test_create_layout_ignores_client_supplied_created_by_id(
+        self, client, setup_user
+    ):
+        response = client.post(
+            "/layouts",
+            json={
+                "alias": "Spoofed Layout",
+                "html": "<html></html>",
+                "created_by_id": str(uuid4()),
+            },
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.json()["created_by"]["id"] == str(setup_user.id)
 
     def test_create_layout_slug_normalisation(self, client):
         response = client.post(
