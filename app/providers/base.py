@@ -19,6 +19,7 @@ class Attachment(BaseModel):
 class EmailCreateRequest(BaseModel):
     project_id: Optional[UUID] = None
     from_email: Optional[EmailStr] = None
+    reply_to: Optional[EmailStr] = None
     subject: Optional[str] = None
     html: Optional[str] = None
     text: Optional[str] = None

@@ -50,6 +50,7 @@ class SendEmailCommand:
             project_id=req.project_id,
             provider=email_provider.provider_id,
             from_email=rendered.from_email,
+            reply_to=rendered.reply_to,
             to_email=str(req.to[0]),
             subject=rendered.subject,
             body=rendered.html,
@@ -66,6 +67,7 @@ class SendEmailCommand:
                         "html": rendered.html,
                         "subject": rendered.subject,
                         "from_email": rendered.from_email,
+                        "reply_to": rendered.reply_to,
                     }
                 )
             )

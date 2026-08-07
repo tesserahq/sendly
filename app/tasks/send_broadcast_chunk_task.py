@@ -95,6 +95,7 @@ def _send_chunk(db, email_ids: List[UUID]) -> None:
             EmailCreateRequest(
                 project_id=email.project_id,
                 from_email=payload.from_email,
+                reply_to=payload.reply_to,
                 subject=payload.subject,
                 html=payload.html,
                 text=payload.text,

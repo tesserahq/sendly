@@ -67,6 +67,9 @@ class EmailBase(BaseModel):
     from_email: EmailStr
     """Sender email address. Required field."""
 
+    reply_to: Optional[EmailStr] = None
+    """Reply-to address actually used when sending. Optional field."""
+
     to_email: EmailStr
     """Recipient email address. Required field."""
 

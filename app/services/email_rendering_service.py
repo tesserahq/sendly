@@ -64,6 +64,7 @@ class RenderedContent:
     html: str
     subject: str
     from_email: str
+    reply_to: Optional[str] = None
 
 
 class EmailRenderingService:
@@ -147,7 +148,12 @@ class EmailRenderingService:
                 "default on the template."
             )
 
-        return RenderedContent(html=html, subject=subject, from_email=from_email)
+        reply_to = req.reply_to or template.reply_to
+        reply_to = str(reply_to) if reply_to else None
+
+        return RenderedContent(
+            html=html, subject=subject, from_email=from_email, reply_to=reply_to
+        )
 
     def resolve_inline(self, req: EmailCreateRequest) -> RenderedContent:
         if not req.from_email:
@@ -163,7 +169,10 @@ class EmailRenderingService:
 
         html = self.render(req.html, **req.template_variables)
         return RenderedContent(
-            html=html, subject=req.subject, from_email=str(req.from_email)
+            html=html,
+            subject=req.subject,
+            from_email=str(req.from_email),
+            reply_to=str(req.reply_to) if req.reply_to else None,
         )
 
     def _fetch_template(self, req: ContentOptions) -> Template:

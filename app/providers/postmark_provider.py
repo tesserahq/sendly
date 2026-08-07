@@ -25,6 +25,8 @@ def _build_message(req: EmailCreateRequest) -> Dict[str, Any]:
         "TextBody": req.text,
         "TrackOpens": True,
     }
+    if req.reply_to:
+        message["ReplyTo"] = req.reply_to
     if req.custom_headers:
         message["Headers"] = [
             {"Name": name, "Value": value} for name, value in req.custom_headers.items()

@@ -328,6 +328,71 @@ class TestTemplateRouter:
         assert response.status_code == status.HTTP_200_OK
         assert "Hello Bob" in response.json()["body"]
 
+    def test_send_email_reply_to_falls_back_to_template(self, client, db, faker):
+        from app.models.template import Template as TemplateModel
+
+        template = TemplateModel(
+            alias=faker.slug(),
+            subject="Hi",
+            html="<p>hi</p>",
+            from_email=faker.email(),
+            reply_to="template-reply@example.com",
+        )
+        db.add(template)
+        db.commit()
+        db.refresh(template)
+
+        mock_result = MagicMock(ok=True, provider_message_id="pm-reply-to")
+        with patch(
+            "app.commands.send_email_command.get_default_provider"
+        ) as mock_provider:
+            mock_provider.return_value.provider_id = "postmark"
+            mock_provider.return_value.send_email.return_value = mock_result
+
+            response = client.post(
+                "/emails",
+                json={
+                    "to": ["user@example.com"],
+                    "template_alias": template.alias,
+                },
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["reply_to"] == "template-reply@example.com"
+
+    def test_send_email_reply_to_in_payload_overrides_template(self, client, db, faker):
+        from app.models.template import Template as TemplateModel
+
+        template = TemplateModel(
+            alias=faker.slug(),
+            subject="Hi",
+            html="<p>hi</p>",
+            from_email=faker.email(),
+            reply_to="template-reply@example.com",
+        )
+        db.add(template)
+        db.commit()
+        db.refresh(template)
+
+        mock_result = MagicMock(ok=True, provider_message_id="pm-reply-to-2")
+        with patch(
+            "app.commands.send_email_command.get_default_provider"
+        ) as mock_provider:
+            mock_provider.return_value.provider_id = "postmark"
+            mock_provider.return_value.send_email.return_value = mock_result
+
+            response = client.post(
+                "/emails",
+                json={
+                    "to": ["user@example.com"],
+                    "template_alias": template.alias,
+                    "reply_to": "payload-reply@example.com",
+                },
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["reply_to"] == "payload-reply@example.com"
+
     def test_send_email_template_and_inline_html_rejected(self, client, setup_template):
         response = client.post(
             "/emails",

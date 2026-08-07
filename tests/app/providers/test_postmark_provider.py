@@ -62,6 +62,30 @@ class TestSendEmail:
         call_kwargs = MockClient.return_value.emails.send.call_args.kwargs
         assert call_kwargs["To"] == "a@example.com, b@example.com"
 
+    def test_forwards_reply_to(self):
+        req = _make_request(reply_to="reply@example.com")
+        with patch("app.providers.postmark_provider.PostmarkClient") as MockClient:
+            MockClient.return_value.emails.send.return_value = {
+                "ErrorCode": 0,
+                "MessageID": "pm-1",
+            }
+            PostmarkProvider({}).send_email(req)
+
+        call_kwargs = MockClient.return_value.emails.send.call_args.kwargs
+        assert call_kwargs["ReplyTo"] == "reply@example.com"
+
+    def test_omits_reply_to_when_not_set(self):
+        req = _make_request()
+        with patch("app.providers.postmark_provider.PostmarkClient") as MockClient:
+            MockClient.return_value.emails.send.return_value = {
+                "ErrorCode": 0,
+                "MessageID": "pm-1",
+            }
+            PostmarkProvider({}).send_email(req)
+
+        call_kwargs = MockClient.return_value.emails.send.call_args.kwargs
+        assert "ReplyTo" not in call_kwargs
+
     def test_omits_message_stream_when_not_set(self):
         req = _make_request()
         with patch("app.providers.postmark_provider.PostmarkClient") as MockClient:
