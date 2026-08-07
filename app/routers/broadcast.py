@@ -1,8 +1,11 @@
 import json
 from json import JSONDecodeError
-from typing import Optional
+from typing import Annotated, Optional
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi_pagination import Page, Params
+from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy.orm import Session
 from tessera_sdk.server.dependencies.authorization import authorize
 
@@ -17,6 +20,7 @@ from app.db import get_db
 from app.repositories.broadcast_repository import BroadcastRepository
 from app.repositories.email_send_outbox_repository import EmailSendOutboxRepository
 from app.schemas.broadcast import (
+    BroadcastBatchSummary,
     BroadcastCreateRequest,
     BroadcastSendResponse,
     BroadcastStatusResponse,
@@ -68,6 +72,24 @@ def send_broadcast(
         queued_count=batch.queued_count,
         suppressed_count=batch.suppressed_count,
     )
+
+
+@router.get("", response_model=Page[BroadcastBatchSummary])
+def list_broadcasts(
+    project_id: Annotated[
+        Optional[UUID],
+        Query(description="Project ID to filter broadcast batches by"),
+    ] = None,
+    db: Session = Depends(get_db),
+    params: Params = Depends(),
+    _authorized: bool = Depends(rbac["read"]),
+) -> Page[BroadcastBatchSummary]:
+    """List broadcast batches, newest first. Accept-time counts only —
+    queued_count doubles as the recipient count; use GET /{batch_id} for a
+    single batch's live prepared_count/finished progress."""
+    repo = BroadcastRepository(db)
+    query = repo.get_batches_query(project_id=project_id)
+    return paginate(query, params)
 
 
 @router.get("/{batch_id}", response_model=BroadcastStatusResponse)

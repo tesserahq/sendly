@@ -272,6 +272,73 @@ class TestGetBroadcast:
         assert response.status_code == status.HTTP_200_OK
         assert captured_domains == [str(real_project_id)]
 
+
+class TestListBroadcasts:
+    def test_list_broadcasts_returns_batches_newest_first(self, broadcast_client):
+        project_id = uuid4()
+        with patched_providers():
+            first = broadcast_client.post("/broadcasts/send", json=_payload(project_id))
+            second = broadcast_client.post(
+                "/broadcasts/send", json=_payload(project_id, subject="Second")
+            )
+
+        response = broadcast_client.get(
+            "/broadcasts", params={"project_id": str(project_id)}
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        batch_ids = [item["batch_id"] for item in data["items"]]
+        assert batch_ids[:2] == [
+            second.json()["batch_id"],
+            first.json()["batch_id"],
+        ]
+
+    def test_list_broadcasts_item_has_accept_time_counts_only(self, broadcast_client):
+        project_id = uuid4()
+        with patched_providers():
+            send_response = broadcast_client.post(
+                "/broadcasts/send", json=_payload(project_id)
+            )
+        batch_id = send_response.json()["batch_id"]
+
+        response = broadcast_client.get(
+            "/broadcasts", params={"project_id": str(project_id)}
+        )
+
+        item = next(
+            item for item in response.json()["items"] if item["batch_id"] == batch_id
+        )
+        assert item["queued_count"] == 2
+        assert item["suppressed_count"] == 0
+        assert "prepared_count" not in item
+        assert "finished" not in item
+
+    def test_list_broadcasts_filters_by_project_id(self, broadcast_client):
+        project_id = uuid4()
+        other_project_id = uuid4()
+        with patched_providers():
+            broadcast_client.post("/broadcasts/send", json=_payload(project_id))
+            broadcast_client.post("/broadcasts/send", json=_payload(other_project_id))
+
+        response = broadcast_client.get(
+            "/broadcasts", params={"project_id": str(project_id)}
+        )
+
+        data = response.json()
+        assert all(item["project_id"] == str(project_id) for item in data["items"])
+
+    def test_list_broadcasts_without_project_id_is_not_scoped(self, broadcast_client):
+        project_id = uuid4()
+        with patched_providers():
+            broadcast_client.post("/broadcasts/send", json=_payload(project_id))
+
+        response = broadcast_client.get("/broadcasts")
+
+        assert response.status_code == status.HTTP_200_OK
+
+
+class TestGetBroadcastAuthorization:
     def test_get_broadcast_for_global_batch_authorizes_against_wildcard_domain(
         self, broadcast_client
     ):
