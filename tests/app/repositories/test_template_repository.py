@@ -110,3 +110,60 @@ class TestTemplateRepository:
                     html="<p>dupe</p>",
                 )
             )
+
+    def test_create_template_with_tags(self, db):
+        repo = TemplateRepository(db)
+        template = repo.create_template(
+            TemplateCreate(
+                alias="tagged-template",
+                subject="Hi",
+                html="<p>hi</p>",
+                tags=["hello", "campaign:1234"],
+            )
+        )
+        assert template.tags == ["hello", "campaign:1234"]
+
+    def test_get_templates_query_filters_by_tag_and_semantics(self, db):
+        repo = TemplateRepository(db)
+        repo.create_template(
+            TemplateCreate(
+                alias="both-tags",
+                subject="Hi",
+                html="<p>hi</p>",
+                tags=["hello", "campaign:1234"],
+            )
+        )
+        repo.create_template(
+            TemplateCreate(
+                alias="one-tag",
+                subject="Hi",
+                html="<p>hi</p>",
+                tags=["hello"],
+            )
+        )
+
+        results = repo.get_templates_query(tags=["hello", "campaign:1234"]).all()
+        aliases = [t.alias for t in results]
+        assert "both-tags" in aliases
+        assert "one-tag" not in aliases
+
+    def test_get_unique_tags(self, db):
+        repo = TemplateRepository(db)
+        repo.create_template(
+            TemplateCreate(
+                alias="tags-a", subject="Hi", html="<p>hi</p>", tags=["hello", "world"]
+            )
+        )
+        repo.create_template(
+            TemplateCreate(
+                alias="tags-b",
+                subject="Hi",
+                html="<p>hi</p>",
+                tags=["world", "campaign:1234"],
+            )
+        )
+        repo.create_template(
+            TemplateCreate(alias="no-tags", subject="Hi", html="<p>hi</p>")
+        )
+
+        assert repo.get_unique_tags() == ["campaign:1234", "hello", "world"]

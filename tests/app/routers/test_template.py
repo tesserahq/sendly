@@ -48,6 +48,44 @@ class TestTemplateRouter:
         assert response.status_code == status.HTTP_201_CREATED
         assert response.json()["alias"] == "my-cool-template"
 
+    def test_create_template_with_tags(self, client):
+        response = client.post(
+            "/templates",
+            json={
+                "alias": "tagged-template",
+                "subject": "Hi",
+                "html": "<p>hi</p>",
+                "tags": ["hello", "campaign:1234"],
+            },
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.json()["tags"] == ["hello", "campaign:1234"]
+
+    def test_create_template_tags_trimmed_and_deduped(self, client):
+        response = client.post(
+            "/templates",
+            json={
+                "alias": "trim-dedupe",
+                "subject": "Hi",
+                "html": "<p>hi</p>",
+                "tags": [" hello ", "hello", "world"],
+            },
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.json()["tags"] == ["hello", "world"]
+
+    def test_create_template_rejects_empty_tag(self, client):
+        response = client.post(
+            "/templates",
+            json={
+                "alias": "empty-tag",
+                "subject": "Hi",
+                "html": "<p>hi</p>",
+                "tags": ["hello", "  "],
+            },
+        )
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
     def test_get_template(self, client, setup_template):
         response = client.get(f"/templates/{setup_template.id}")
         assert response.status_code == status.HTTP_200_OK
@@ -75,6 +113,56 @@ class TestTemplateRouter:
         assert response.status_code == status.HTTP_200_OK
         ids = [item["id"] for item in response.json()["items"]]
         assert str(setup_template.id) in ids
+
+    def test_list_templates_filter_by_tag_and_semantics(self, client):
+        client.post(
+            "/templates",
+            json={
+                "alias": "both-tags",
+                "subject": "Hi",
+                "html": "<p>hi</p>",
+                "tags": ["hello", "campaign:1234"],
+            },
+        )
+        client.post(
+            "/templates",
+            json={
+                "alias": "one-tag",
+                "subject": "Hi",
+                "html": "<p>hi</p>",
+                "tags": ["hello"],
+            },
+        )
+
+        response = client.get("/templates?tag=hello&tag=campaign:1234")
+        assert response.status_code == status.HTTP_200_OK
+        aliases = [item["alias"] for item in response.json()["items"]]
+        assert "both-tags" in aliases
+        assert "one-tag" not in aliases
+
+    def test_list_template_tags(self, client):
+        client.post(
+            "/templates",
+            json={
+                "alias": "tags-a",
+                "subject": "Hi",
+                "html": "<p>hi</p>",
+                "tags": ["hello", "world"],
+            },
+        )
+        client.post(
+            "/templates",
+            json={
+                "alias": "tags-b",
+                "subject": "Hi",
+                "html": "<p>hi</p>",
+                "tags": ["world", "campaign:1234"],
+            },
+        )
+
+        response = client.get("/templates/tags")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == ["campaign:1234", "hello", "world"]
 
     def test_list_templates_includes_nested_layout(
         self, client, setup_template_with_layout, setup_layout
@@ -126,6 +214,31 @@ class TestTemplateRouter:
         assert data["html"] == setup_template.html
         assert data["from_email"] == setup_template.from_email
         assert data["id"] != str(setup_template.id)
+
+    def test_clone_template_does_not_copy_source_tags(self, client, db, faker):
+        from app.models.template import Template as TemplateModel
+
+        tagged = TemplateModel(
+            alias=faker.slug(),
+            subject="Hi",
+            html="<p>hi</p>",
+            tags=["hello", "campaign:1234"],
+        )
+        db.add(tagged)
+        db.commit()
+        db.refresh(tagged)
+
+        response = client.post(f"/templates/{tagged.id}/clone")
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.json()["tags"] == []
+
+    def test_clone_template_with_explicit_tags(self, client, setup_template):
+        response = client.post(
+            f"/templates/{setup_template.id}/clone",
+            json={"tags": ["new-tag"]},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.json()["tags"] == ["new-tag"]
 
     def test_clone_template_custom_alias_and_name(self, client, setup_template):
         response = client.post(

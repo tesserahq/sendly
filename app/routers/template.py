@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from uuid import UUID
 from fastapi_pagination import Page, Params
@@ -38,11 +39,23 @@ def create_template(
 
 @router.get("", response_model=Page[Template])
 def list_templates(
+    tag: Annotated[
+        Optional[List[str]],
+        Query(description="Filter by tag; repeat for multiple tags (AND semantics)"),
+    ] = None,
     db: Session = Depends(get_db),
     params: Params = Depends(),
     _authorized: bool = Depends(rbac["read"]),
 ) -> Page[Template]:
-    return paginate(TemplateRepository(db).get_templates_query(), params)
+    return paginate(TemplateRepository(db).get_templates_query(tags=tag), params)
+
+
+@router.get("/tags", response_model=List[str])
+def list_template_tags(
+    db: Session = Depends(get_db),
+    _authorized: bool = Depends(rbac["read"]),
+) -> List[str]:
+    return TemplateRepository(db).get_unique_tags()
 
 
 @router.get("/{template_id}", response_model=Template)

@@ -41,5 +41,6 @@ class CloneTemplateCommand:
             from_email=source.from_email,
             reply_to=source.reply_to,
             layout_id=source.layout_id,
+            tags=req.tags if req.tags is not None else [],
         )
         return self.repo.create_template(clone_data, created_by_id=created_by_id)
