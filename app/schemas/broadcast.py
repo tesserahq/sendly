@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -105,3 +106,21 @@ class BroadcastStatusResponse(BaseModel):
     this batch are still pending). Does not track post-send webhook
     updates (opened/clicked/bounced, etc.) — those keep updating individual
     Email rows independently, same as single-send, indefinitely."""
+
+
+class BroadcastBatchSummary(BaseModel):
+    """One row of GET /broadcasts.
+
+    Accept-time counts only (queued_count doubles as the recipient count) —
+    no live prepared_count/finished here, since computing those per row
+    would mean two extra queries per batch on every page. Use
+    GET /broadcasts/{batch_id} for a single batch's live progress.
+    """
+
+    model_config = {"from_attributes": True}
+
+    batch_id: str
+    project_id: Optional[UUID]
+    queued_count: int
+    suppressed_count: int
+    created_at: datetime

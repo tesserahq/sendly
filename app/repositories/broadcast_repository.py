@@ -42,6 +42,14 @@ class BroadcastRepository:
             .first()
         )
 
+    def get_batches_query(self, project_id: Optional[UUID] = None):
+        """Query for broadcast batches, newest first, for use with
+        fastapi-pagination's paginate()."""
+        query = self.db.query(BroadcastBatch)
+        if project_id is not None:
+            query = query.filter(BroadcastBatch.project_id == project_id)
+        return query.order_by(BroadcastBatch.created_at.desc())
+
     def get_batch_by_batch_id(self, batch_id: str) -> Optional[BroadcastBatch]:
         """batch_id is server-generated (a UUID) and globally unique — no
         project_id scoping needed, unlike idempotency_key (caller-chosen,
