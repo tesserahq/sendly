@@ -27,12 +27,23 @@ class TemplateRepository(SoftDeleteRepository[Template]):
             .first()
         )
 
-    def get_templates_query(self):
-        return (
+    def get_templates_query(self, tags: Optional[List[str]] = None):
+        query = (
             self.db.query(Template)
             .options(selectinload(Template.layout), selectinload(Template.created_by))
             .order_by(Template.created_at.desc())
         )
+        if tags:
+            query = query.filter(Template.tags.contains(tags))
+        return query
+
+    def get_unique_tags(self) -> List[str]:
+        rows = self.db.query(Template.tags).filter(Template.tags.isnot(None)).all()
+        unique_tags = set()
+        for (tags,) in rows:
+            if tags:
+                unique_tags.update(tags)
+        return sorted(unique_tags)
 
     def get_templates(self, skip: int = 0, limit: int = 100) -> List[Template]:
         return self.db.query(Template).offset(skip).limit(limit).all()
