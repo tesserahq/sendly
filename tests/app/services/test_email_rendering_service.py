@@ -26,6 +26,7 @@ def _make_template(**overrides):
         html="<p>Hello ${name}</p>",
         subject="Hi ${name}",
         from_email="template@example.com",
+        reply_to=None,
         layout=None,
         layout_id=None,
     )
@@ -52,6 +53,25 @@ class TestResolveInline:
         assert "Hi Alice" in result.html
         assert result.subject == "Subject"
         assert result.from_email == "from@example.com"
+
+    def test_reply_to_passed_through(self):
+        service = EmailRenderingService(db=MagicMock())
+        req = _make_req(
+            html="<p>hi</p>",
+            subject="Subject",
+            from_email="from@example.com",
+            reply_to="reply@example.com",
+        )
+        result = service.resolve_inline(req)
+        assert result.reply_to == "reply@example.com"
+
+    def test_reply_to_defaults_to_none(self):
+        service = EmailRenderingService(db=MagicMock())
+        req = _make_req(
+            html="<p>hi</p>", subject="Subject", from_email="from@example.com"
+        )
+        result = service.resolve_inline(req)
+        assert result.reply_to is None
 
     def test_missing_from_email_raises(self):
         service = EmailRenderingService(db=MagicMock())
@@ -89,6 +109,38 @@ class TestResolveTemplate:
         assert "Hello Bob" in result.html
         assert result.subject == "Hi Bob"
         assert result.from_email == "template@example.com"
+        assert result.reply_to is None
+
+    def test_reply_to_falls_back_to_template(self):
+        template = _make_template(reply_to="template-reply@example.com")
+        with patch(
+            "app.services.email_rendering_service.TemplateRepository"
+        ) as MockRepo:
+            MockRepo.return_value.get_template.return_value = template
+            service = EmailRenderingService(db=MagicMock())
+            req = _make_req(
+                template_id="00000000-0000-0000-0000-000000000000",
+                template_variables={"name": "Bob"},
+            )
+            result = service.resolve_template(req)
+
+        assert result.reply_to == "template-reply@example.com"
+
+    def test_reply_to_in_payload_overrides_template(self):
+        template = _make_template(reply_to="template-reply@example.com")
+        with patch(
+            "app.services.email_rendering_service.TemplateRepository"
+        ) as MockRepo:
+            MockRepo.return_value.get_template.return_value = template
+            service = EmailRenderingService(db=MagicMock())
+            req = _make_req(
+                template_id="00000000-0000-0000-0000-000000000000",
+                template_variables={"name": "Bob"},
+                reply_to="payload-reply@example.com",
+            )
+            result = service.resolve_template(req)
+
+        assert result.reply_to == "payload-reply@example.com"
 
     def test_wraps_template_in_layout(self):
         layout = SimpleNamespace(html="<html>${content}</html>")

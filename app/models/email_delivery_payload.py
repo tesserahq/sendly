@@ -21,6 +21,7 @@ class EmailDeliveryPayload(Base, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("emails.id"), nullable=False, unique=True
     )
     from_email = Column(String, nullable=False)
+    reply_to = Column(String, nullable=True)
     to_email = Column(String, nullable=False)
     subject = Column(String, nullable=False)
     html = Column(String, nullable=True)

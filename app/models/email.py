@@ -26,6 +26,7 @@ class Email(Base, TimestampMixin, SoftDeleteMixin):
     provider = Column(String, nullable=False)
     provider_message_id = Column(String, nullable=True)
     project_id = Column(UUID(as_uuid=True), nullable=True)
+    reply_to = Column(String, nullable=True)
     error_message = Column(String, nullable=True)
     batch_id = Column(String, nullable=True, index=True)
     tags = Column(JSONB, nullable=True)

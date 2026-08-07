@@ -99,6 +99,7 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> N
         req = EmailCreateRequest(
             project_id=batch.project_id,
             from_email=content_spec.from_email,
+            reply_to=content_spec.reply_to,
             subject=content_spec.subject,
             html=content_spec.html,
             text=content_spec.text,
@@ -128,6 +129,7 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> N
                 project_id=batch.project_id,
                 provider=provider.provider_id,
                 from_email=rendered.from_email,
+                reply_to=rendered.reply_to,
                 to_email=recipient.email,
                 subject=rendered.subject,
                 body=rendered.html,
@@ -140,6 +142,7 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> N
         payload_repo.create_payload(
             email_id=email.id,
             from_email=rendered.from_email,
+            reply_to=rendered.reply_to,
             to_email=recipient.email,
             subject=rendered.subject,
             html=rendered.html,

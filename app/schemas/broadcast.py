@@ -29,6 +29,7 @@ class BroadcastCreateRequest(BaseModel):
 
     project_id: Optional[UUID] = None
     from_email: Optional[EmailStr] = None
+    reply_to: Optional[EmailStr] = None
     subject: Optional[str] = None
     html: Optional[str] = None
     text: Optional[str] = None
@@ -59,6 +60,7 @@ class ContentSpec(BaseModel):
     template_variables: Dict[str, Any] = Field(default_factory=dict)
     subject: Optional[str] = None
     from_email: Optional[str] = None
+    reply_to: Optional[str] = None
     custom_headers: Dict[str, str] = Field(default_factory=dict)
     attachments: List[Attachment] = Field(default_factory=list)
     tags: Optional[List[str]] = None
@@ -74,6 +76,7 @@ class ContentSpec(BaseModel):
             template_variables=req.template_variables,
             subject=req.subject,
             from_email=req.from_email,
+            reply_to=req.reply_to,
             custom_headers=req.custom_headers,
             attachments=req.attachments,
             tags=req.tags,
