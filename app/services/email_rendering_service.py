@@ -12,6 +12,7 @@ block the rest of a chunk.
 from __future__ import annotations
 
 import logging
+import re
 import types
 from dataclasses import dataclass
 from datetime import datetime
@@ -197,6 +198,22 @@ class EmailRenderingService:
             )
         return obj
 
+    # Mako's own NameError for an undefined variable only ever says
+    # "Undefined" — it never names the variable. Its compiled Python source
+    # does, though: every top-level identifier the template needs from the
+    # caller is fetched via `context.get('name', UNDEFINED)`, so scraping
+    # that out of the compiled code lets us name the actual missing
+    # variable(s) instead of just listing what was supplied.
+    _CONTEXT_GET_RE = re.compile(r"context\.get\('([^']+)',\s*UNDEFINED\)")
+
+    @staticmethod
+    def _referenced_identifiers(template_str: str) -> set[str]:
+        return set(
+            EmailRenderingService._CONTEXT_GET_RE.findall(
+                MakoTemplate(template_str).code
+            )
+        )
+
     @staticmethod
     def render(template_str: str, **variables) -> str:
         variables.setdefault("year", datetime.now().year)
@@ -206,9 +223,15 @@ class EmailRenderingService:
         try:
             return MakoTemplate(template_str).render(**variables)
         except (NameError, AttributeError) as e:
+            provided = sorted(k for k in variables if k != "year")
+            missing = sorted(
+                EmailRenderingService._referenced_identifiers(template_str)
+                - set(provided)
+            )
+            missing_clause = f"Missing variable(s): {missing}. " if missing else ""
             raise MissingFieldError(
                 f"Template rendering failed: a required variable is missing or undefined. "
-                f"Variables provided: {[k for k in variables if k != 'year']}. Error: {e}"
+                f"{missing_clause}Variables provided: {provided}. Error: {e}"
             ) from e
         except MakoException as e:
             raise TemplateSyntaxError(f"Template syntax error: {str(e)}") from e

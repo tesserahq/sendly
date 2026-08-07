@@ -205,6 +205,24 @@ class TestRender:
         with pytest.raises(MissingFieldError):
             EmailRenderingService.render("Hello ${name}")
 
+    def test_missing_variable_is_named_in_error_message(self):
+        with pytest.raises(MissingFieldError) as exc_info:
+            EmailRenderingService.render(
+                "Hello ${first_name} ${last_name}", first_name="Ada"
+            )
+        assert "last_name" in str(exc_info.value)
+        assert "first_name" not in str(exc_info.value).split("Variables provided")[0]
+
+    def test_missing_attribute_on_provided_namespace_not_reported_as_missing(self):
+        with pytest.raises(MissingFieldError) as exc_info:
+            EmailRenderingService.render(
+                "${company.name}", company={"other_field": "x"}
+            )
+        # `company` was provided, so it shouldn't be listed as a missing
+        # variable — the underlying AttributeError already names the
+        # missing attribute.
+        assert "Missing variable(s)" not in str(exc_info.value)
+
     def test_syntax_error_raises_template_syntax_error(self):
         with pytest.raises(TemplateSyntaxError):
             EmailRenderingService.render("<% this is not valid mako %>")

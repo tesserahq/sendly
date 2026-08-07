@@ -204,13 +204,19 @@ class TestPrepareBroadcastChunkTask:
             attributes={"plan": "Pro"},
         )
 
-        with patch(
-            "app.tasks.prepare_broadcast_chunk_task.get_default_provider"
-        ) as mock_provider:
+        with (
+            patch(
+                "app.tasks.prepare_broadcast_chunk_task.get_default_provider"
+            ) as mock_provider,
+            patch("app.tasks.prepare_broadcast_chunk_task.logger") as mock_logger,
+        ):
             mock_provider.return_value.provider_id = "postmark"
             prepare_broadcast_chunk_task(
                 str(batch.id), [str(broken_recipient.id), str(ok_recipient.id)]
             )
+
+        warning_args = mock_logger.warning.call_args_list[0].args
+        assert "Missing variable(s): ['plan']" in str(warning_args[-1])
 
         real_db.expire_all()
         assert (
