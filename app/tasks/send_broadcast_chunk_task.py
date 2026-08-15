@@ -18,6 +18,7 @@ from uuid import UUID
 from app.core.celery_app import celery_app
 from app.providers.base import Attachment, EmailCreateRequest
 from app.providers.registry import get_default_provider
+from app.repositories.broadcast_repository import BroadcastRepository
 from app.repositories.email_delivery_payload_repository import (
     EmailDeliveryPayloadRepository,
 )
@@ -123,3 +124,19 @@ def _send_chunk(db, email_ids: List[UUID]) -> None:
     # Only mark entries whose email actually got a terminal outcome recorded
     # above — never blanket-mark every id we merely looked up.
     outbox_repo.mark_processed(handled_email_ids)
+
+    if handled_email_ids:
+        broadcast_repo = BroadcastRepository(db)
+        # Usually one batch per chunk, but iterate distinct batch_ids
+        # rather than assume it, since nothing structurally enforces that.
+        batch_ids = {
+            emails[email_id].batch_id
+            for email_id in handled_email_ids
+            if emails[email_id].batch_id
+        }
+        for batch_id in batch_ids:
+            batch = broadcast_repo.get_batch_by_batch_id(batch_id)
+            if batch is None:
+                continue
+            pending_send_count = outbox_repo.count_pending_for_batch(batch_id)
+            broadcast_repo.maybe_mark_finished(batch.id, pending_send_count)

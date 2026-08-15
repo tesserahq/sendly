@@ -294,7 +294,7 @@ class TestListBroadcasts:
             first.json()["batch_id"],
         ]
 
-    def test_list_broadcasts_item_has_accept_time_counts_only(self, broadcast_client):
+    def test_list_broadcasts_item_includes_prepared_progress(self, broadcast_client):
         project_id = uuid4()
         with patched_providers():
             send_response = broadcast_client.post(
@@ -311,8 +311,8 @@ class TestListBroadcasts:
         )
         assert item["queued_count"] == 2
         assert item["suppressed_count"] == 0
-        assert "prepared_count" not in item
-        assert "finished" not in item
+        assert item["prepared_count"] == 2
+        assert item["finished"] is True
 
     def test_list_broadcasts_filters_by_project_id(self, broadcast_client):
         project_id = uuid4()

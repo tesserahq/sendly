@@ -40,6 +40,14 @@ class BroadcastPreparePublisher:
             ids: List[str] = [str(recipient.id) for recipient in chunk]
             prepare_broadcast_chunk_task.delay(str(broadcast_batch_id), ids)
             dispatched += len(ids)
+
+        if dispatched == 0:
+            # No unprepared recipients to dispatch — e.g. every recipient
+            # was already suppressed at accept time — so the prepare task
+            # (the usual place prepared_count/finished get recomputed)
+            # never runs for this batch. Recompute here instead, or a
+            # fully-suppressed batch would stay stuck at finished=False.
+            self.repo.maybe_mark_finished(broadcast_batch_id, pending_send_count=0)
         return dispatched
 
     def run_recovery_sweep(self) -> int:

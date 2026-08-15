@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Boolean, Column, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 import uuid
@@ -20,6 +20,12 @@ class BroadcastBatch(Base, TimestampMixin, SoftDeleteMixin):
     content_spec = Column(JSONB, nullable=False)
     queued_count = Column(Integer, nullable=False, default=0)
     suppressed_count = Column(Integer, nullable=False, default=0)
+    # Denormalized, updated at the prepare/send write points instead of
+    # computed live — see BroadcastRepository.increment_prepared_count and
+    # .maybe_mark_finished. Pre-migration rows default to 0/False and are
+    # not backfilled.
+    prepared_count = Column(Integer, nullable=False, default=0)
+    finished = Column(Boolean, nullable=False, default=False)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

@@ -18,7 +18,6 @@ from app.auth.rbac import (
 from app.commands.send_broadcast_command import SendBroadcastCommand
 from app.db import get_db
 from app.repositories.broadcast_repository import BroadcastRepository
-from app.repositories.email_send_outbox_repository import EmailSendOutboxRepository
 from app.schemas.broadcast import (
     BroadcastBatchSummary,
     BroadcastCreateRequest,
@@ -84,9 +83,10 @@ def list_broadcasts(
     params: Params = Depends(),
     _authorized: bool = Depends(rbac["read"]),
 ) -> Page[BroadcastBatchSummary]:
-    """List broadcast batches, newest first. Accept-time counts only —
-    queued_count doubles as the recipient count; use GET /{batch_id} for a
-    single batch's live prepared_count/finished progress."""
+    """List broadcast batches, newest first, including each batch's
+    prepared_count/finished progress (denormalized columns, updated at the
+    prepare/send write points — see BroadcastRepository.increment_prepared_count
+    and .maybe_mark_finished)."""
     repo = BroadcastRepository(db)
     query = repo.get_batches_query(project_id=project_id)
     return paginate(query, params)
@@ -98,7 +98,8 @@ async def get_broadcast(
     request: Request,
     db: Session = Depends(get_db),
 ) -> BroadcastStatusResponse:
-    """Accept-time counts plus live prepare/send progress for one batch.
+    """Accept-time counts plus prepare/send progress for one batch, read
+    from the denormalized prepared_count/finished columns.
 
     batch_id is server-generated and globally unique, so the DB lookup
     below isn't scoped by project_id — but that means project_id can't be
@@ -123,18 +124,10 @@ async def get_broadcast(
     )
     await check_read(request)
 
-    prepared_count = repo.count_prepared(batch.id)
-    outbox_repo = EmailSendOutboxRepository(db)
-    pending_send_count = outbox_repo.count_pending_for_batch(batch.batch_id)
-    # Prepare must have created every expected Email row (or there'd be
-    # nothing yet for the send stage to have picked up), and every outbox
-    # entry it created must have been attempted.
-    finished = prepared_count == batch.queued_count and pending_send_count == 0
-
     return BroadcastStatusResponse(
         batch_id=batch.batch_id,
         queued_count=batch.queued_count,
         suppressed_count=batch.suppressed_count,
-        prepared_count=prepared_count,
-        finished=finished,
+        prepared_count=batch.prepared_count,
+        finished=batch.finished,
     )

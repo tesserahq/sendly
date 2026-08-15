@@ -156,6 +156,11 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> N
 
     broadcast_repo.mark_recipients_prepared(prepared_ids)
 
+    if prepared_ids:
+        broadcast_repo.increment_prepared_count(batch.id, len(prepared_ids))
+        pending_send_count = outbox_repo.count_pending_for_batch(batch.batch_id)
+        broadcast_repo.maybe_mark_finished(batch.id, pending_send_count)
+
     if created_email_ids:
         # Fast path: dispatch the send stage synchronously, after commit.
         BroadcastOutboxPublisher(db).dispatch(created_email_ids)
