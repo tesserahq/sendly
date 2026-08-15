@@ -111,10 +111,9 @@ class BroadcastStatusResponse(BaseModel):
 class BroadcastBatchSummary(BaseModel):
     """One row of GET /broadcasts.
 
-    Accept-time counts only (queued_count doubles as the recipient count) —
-    no live prepared_count/finished here, since computing those per row
-    would mean two extra queries per batch on every page. Use
-    GET /broadcasts/{batch_id} for a single batch's live progress.
+    prepared_count/finished are denormalized columns on BroadcastBatch,
+    updated at the prepare/send write points rather than computed live —
+    safe to include per row without an N+1 query pattern across a page.
     """
 
     model_config = {"from_attributes": True}
@@ -123,4 +122,6 @@ class BroadcastBatchSummary(BaseModel):
     project_id: Optional[UUID]
     queued_count: int
     suppressed_count: int
+    prepared_count: int
+    finished: bool
     created_at: datetime

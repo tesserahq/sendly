@@ -147,6 +147,34 @@ class BroadcastRepository:
             .count()
         )
 
+    def increment_prepared_count(self, batch_pk: UUID, by: int) -> None:
+        """Atomic SQL increment, not read-modify-write — prepare chunks for
+        the same batch can run concurrently across Celery workers."""
+        if by <= 0:
+            return
+        self.db.query(BroadcastBatch).filter(BroadcastBatch.id == batch_pk).update(
+            {"prepared_count": BroadcastBatch.prepared_count + by},
+            synchronize_session=False,
+        )
+        self.db.commit()
+
+    def maybe_mark_finished(self, batch_pk: UUID, pending_send_count: int) -> bool:
+        """Recompute the same finished condition GET /broadcasts/{batch_id}
+        used to compute live (prepared_count == queued_count and no
+        outbox entries still pending for this batch), and persist it once
+        it holds. Idempotent — safe to call from multiple write points
+        (prepare and send stages) without double-marking."""
+        batch = self.get_batch_by_id(batch_pk)
+        if batch is None or batch.finished:
+            return False
+        if batch.prepared_count == batch.queued_count and pending_send_count == 0:
+            self.db.query(BroadcastBatch).filter(BroadcastBatch.id == batch_pk).update(
+                {"finished": True}, synchronize_session=False
+            )
+            self.db.commit()
+            return True
+        return False
+
     def get_stale_unprepared_batch_ids(self, older_than: datetime) -> List[UUID]:
         """Batch PKs with unprepared, non-suppressed recipients past the grace period."""
         rows = (
