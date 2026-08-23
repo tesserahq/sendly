@@ -26,6 +26,15 @@ class BroadcastBatch(Base, TimestampMixin, SoftDeleteMixin):
     # not backfilled.
     prepared_count = Column(Integer, nullable=False, default=0)
     finished = Column(Boolean, nullable=False, default=False)
+    # Denormalized delivery-outcome rollups, incremented from webhook
+    # ingestion — see ProcessDeliveryEventsCommand and
+    # BroadcastRepository.increment_delivery_counter. Each reflects an
+    # Email reaching that status for the first time (delivered/bounced/
+    # complained are each reachable at most once per email), so a plain
+    # atomic increment can't double-count on a duplicate webhook delivery.
+    delivered_count = Column(Integer, nullable=False, default=0)
+    bounced_count = Column(Integer, nullable=False, default=0)
+    complained_count = Column(Integer, nullable=False, default=0)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

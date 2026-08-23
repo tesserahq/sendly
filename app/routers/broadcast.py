@@ -130,4 +130,7 @@ async def get_broadcast(
         suppressed_count=batch.suppressed_count,
         prepared_count=batch.prepared_count,
         finished=batch.finished,
+        delivered_count=batch.delivered_count,
+        bounced_count=batch.bounced_count,
+        complained_count=batch.complained_count,
     )

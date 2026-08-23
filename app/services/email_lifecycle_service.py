@@ -66,13 +66,19 @@ class EmailLifecycleService:
         event_type: str,
         occurred_at: datetime,
         raw_payload: dict[str, Any],
-    ) -> None:
+    ) -> Optional[str]:
         """
         Persist one webhook event row and advance Email.status if appropriate.
 
         Unknown event types are accepted — the event row is written but
         Email.status is left unchanged (forward-compatible with new provider events).
         Terminal statuses (bounced, complained, dropped, failed) are never overwritten.
+
+        Returns the new Email.status if this event actually changed it, or
+        None if the event was a no-op (unknown type, already at that status,
+        or the email was already terminal) — callers use this to tell a
+        genuine first-time transition apart from a duplicate/retried webhook
+        delivery for the same event.
         """
         self._create_event(
             email_id=email.id,
@@ -80,7 +86,7 @@ class EmailLifecycleService:
             occurred_at=occurred_at,
             details=raw_payload,
         )
-        self._advance_status_and_opened_at(email, event_type, occurred_at)
+        return self._advance_status_and_opened_at(email, event_type, occurred_at)
 
     # ------------------------------------------------------------------
     # Send path (SendEmailCommand)
@@ -195,7 +201,7 @@ class EmailLifecycleService:
 
     def _advance_status_and_opened_at(
         self, email: Email, event_type: str, occurred_at: datetime
-    ) -> None:
+    ) -> Optional[str]:
         new_status = _WEBHOOK_EVENT_TO_STATUS.get(event_type)
         if new_status is not None and (
             email.status in _TERMINAL_STATUSES or new_status == email.status
@@ -209,5 +215,6 @@ class EmailLifecycleService:
             fields["opened_at"] = occurred_at
 
         if not fields:
-            return
+            return None
         self._repo.update_email(email.id, EmailUpdate(**fields))
+        return new_status
