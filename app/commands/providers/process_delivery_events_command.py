@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 
 from app.providers.email_provider import EmailProvider
 from app.providers.base import EmailEvent
+from app.repositories.broadcast_repository import BroadcastRepository
 from app.repositories.email_repository import EmailRepository
 from app.services.email_lifecycle_service import EmailLifecycleService
 from app.commands.providers.handle_subscription_change_command import (
@@ -40,6 +41,7 @@ class ProcessDeliveryEventsCommand:
         self.db = db
         self.email_service = EmailRepository(db)
         self.lifecycle = EmailLifecycleService(self.email_service)
+        self.broadcast_repo = BroadcastRepository(db)
 
     def execute(
         self,
@@ -120,12 +122,17 @@ class ProcessDeliveryEventsCommand:
                 f"Email not found for provider_message_id: {event.provider_message_id}"
             )
 
-        self.lifecycle.record_webhook_event(
+        new_status = self.lifecycle.record_webhook_event(
             email=email,
             event_type=event.type,
             occurred_at=event.occurred_at,
             raw_payload=event.raw_payload,
         )
+
+        if new_status is not None and email.batch_id is not None:
+            batch = self.broadcast_repo.get_batch_by_batch_id(email.batch_id)
+            if batch is not None:
+                self.broadcast_repo.increment_delivery_counter(batch.id, new_status)
 
         if event.type in _SUBSCRIPTION_CHANGE_EVENT_TYPES:
             HandleSubscriptionChangeCommand(self.db).execute(

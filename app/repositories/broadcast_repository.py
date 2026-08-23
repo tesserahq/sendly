@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.constants.email import EmailStatus
 from app.models.broadcast_batch import BroadcastBatch
 from app.models.broadcast_recipient import BroadcastRecipient
 
@@ -174,6 +175,29 @@ class BroadcastRepository:
             self.db.commit()
             return True
         return False
+
+    # Maps the Email.status values that get a denormalized rollup counter to
+    # their BroadcastBatch column. Each status is reachable at most once per
+    # email, so a plain atomic increment can't double-count as long as the
+    # caller only increments on an actual status transition (see
+    # EmailLifecycleService.record_webhook_event's return value).
+    _DELIVERY_COUNTER_COLUMNS = {
+        EmailStatus.DELIVERED: BroadcastBatch.delivered_count,
+        EmailStatus.BOUNCED: BroadcastBatch.bounced_count,
+        EmailStatus.COMPLAINED: BroadcastBatch.complained_count,
+    }
+
+    def increment_delivery_counter(self, batch_pk: UUID, status: str) -> None:
+        """Atomic SQL increment of the rollup column for `status`, if one
+        exists. No-op for statuses without a tracked counter."""
+        column = self._DELIVERY_COUNTER_COLUMNS.get(status)
+        if column is None:
+            return
+        self.db.query(BroadcastBatch).filter(BroadcastBatch.id == batch_pk).update(
+            {column.key: column + 1},
+            synchronize_session=False,
+        )
+        self.db.commit()
 
     def get_stale_unprepared_batch_ids(self, older_than: datetime) -> List[UUID]:
         """Batch PKs with unprepared, non-suppressed recipients past the grace period."""

@@ -106,6 +106,13 @@ class BroadcastStatusResponse(BaseModel):
     this batch are still pending). Does not track post-send webhook
     updates (opened/clicked/bounced, etc.) — those keep updating individual
     Email rows independently, same as single-send, indefinitely."""
+    delivered_count: int
+    bounced_count: int
+    complained_count: int
+    """Delivery-outcome rollups, denormalized from webhook ingestion — see
+    BroadcastRepository.increment_delivery_counter. Each counts emails that
+    have ever reached that status; unlike prepared_count/finished, these
+    keep updating indefinitely after the batch is finished."""
 
 
 class BroadcastBatchSummary(BaseModel):
@@ -124,4 +131,7 @@ class BroadcastBatchSummary(BaseModel):
     suppressed_count: int
     prepared_count: int
     finished: bool
+    delivered_count: int
+    bounced_count: int
+    complained_count: int
     created_at: datetime
