@@ -1,10 +1,11 @@
-"""Tests for the denormalized prepared_count/finished write paths on
-BroadcastRepository."""
+"""Tests for the denormalized prepared_count/finished/delivery-outcome
+write paths on BroadcastRepository."""
 
 from __future__ import annotations
 
 from uuid import uuid4
 
+from app.constants.email import EmailStatus
 from app.models.broadcast_batch import BroadcastBatch
 from app.repositories.broadcast_repository import BroadcastRepository
 
@@ -92,3 +93,24 @@ class TestMaybeMarkFinished:
         result = repo.maybe_mark_finished(batch.id, pending_send_count=0)
 
         assert result is False
+
+
+class TestIncrementDeliveryCounter:
+    def test_increments_opened_count_for_opened_status(self, db):
+        repo = BroadcastRepository(db)
+        batch = _make_batch(db)
+
+        repo.increment_delivery_counter(batch.id, EmailStatus.OPENED)
+        repo.increment_delivery_counter(batch.id, EmailStatus.OPENED)
+
+        db.refresh(batch)
+        assert batch.opened_count == 2
+
+    def test_is_a_no_op_for_untracked_statuses(self, db):
+        repo = BroadcastRepository(db)
+        batch = _make_batch(db)
+
+        repo.increment_delivery_counter(batch.id, EmailStatus.SENT)
+
+        db.refresh(batch)
+        assert batch.opened_count == 0

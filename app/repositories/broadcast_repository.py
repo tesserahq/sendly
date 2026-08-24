@@ -185,6 +185,7 @@ class BroadcastRepository:
         EmailStatus.DELIVERED: BroadcastBatch.delivered_count,
         EmailStatus.BOUNCED: BroadcastBatch.bounced_count,
         EmailStatus.COMPLAINED: BroadcastBatch.complained_count,
+        EmailStatus.OPENED: BroadcastBatch.opened_count,
     }
 
     def increment_delivery_counter(self, batch_pk: UUID, status: str) -> None:

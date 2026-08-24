@@ -138,6 +138,7 @@ class TestGetBroadcast:
         assert data["queued_count"] == 2
         assert data["prepared_count"] == 2
         assert data["finished"] is True
+        assert data["opened_count"] == 0
 
     def test_get_broadcast_not_finished_until_send_stage_runs(self, broadcast_client):
         """Prepare-only: every Email/outbox row exists but nothing sent yet."""

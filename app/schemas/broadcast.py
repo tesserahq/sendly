@@ -109,10 +109,13 @@ class BroadcastStatusResponse(BaseModel):
     delivered_count: int
     bounced_count: int
     complained_count: int
+    opened_count: int
     """Delivery-outcome rollups, denormalized from webhook ingestion — see
     BroadcastRepository.increment_delivery_counter. Each counts emails that
     have ever reached that status; unlike prepared_count/finished, these
-    keep updating indefinitely after the batch is finished."""
+    keep updating indefinitely after the batch is finished. opened_count is
+    approximate: a Click webhook arriving before its Open webhook for the
+    same email can skip past "opened", causing a rare undercount."""
 
 
 class BroadcastBatchSummary(BaseModel):
@@ -134,4 +137,5 @@ class BroadcastBatchSummary(BaseModel):
     delivered_count: int
     bounced_count: int
     complained_count: int
+    opened_count: int
     created_at: datetime

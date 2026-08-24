@@ -35,6 +35,13 @@ class BroadcastBatch(Base, TimestampMixin, SoftDeleteMixin):
     delivered_count = Column(Integer, nullable=False, default=0)
     bounced_count = Column(Integer, nullable=False, default=0)
     complained_count = Column(Integer, nullable=False, default=0)
+    # Counts emails that have ever reached "opened" for the first time.
+    # Unlike delivered/bounced/complained, "opened" isn't a terminal status
+    # (it can still advance to "clicked"), so a Click webhook arriving
+    # before the Open webhook for the same email will skip straight past
+    # "opened" and the later Open event won't increment this — an accepted,
+    # rare undercount rather than exact.
+    opened_count = Column(Integer, nullable=False, default=0)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
