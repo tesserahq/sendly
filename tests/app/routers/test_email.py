@@ -60,6 +60,40 @@ class TestEmailRouter:
         assert str(matching.id) in ids
         assert str(other.id) not in ids
 
+    def test_list_emails_filters_by_status(self, client, db, faker):
+        from app.models.email import Email
+
+        batch_id = str(uuid4())
+        opened = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Broadcast",
+            body="Body",
+            status="opened",
+            provider="postmark",
+            batch_id=batch_id,
+        )
+        delivered = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Broadcast",
+            body="Body",
+            status="delivered",
+            provider="postmark",
+            batch_id=batch_id,
+        )
+        db.add_all([opened, delivered])
+        db.commit()
+
+        response = client.get(
+            "/emails", params={"batch_id": batch_id, "status": "opened"}
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        ids = [item["id"] for item in response.json()["items"]]
+        assert str(opened.id) in ids
+        assert str(delivered.id) not in ids
+
     def test_list_emails_filters_by_tag(self, client, db, faker):
         from app.models.email import Email
 
