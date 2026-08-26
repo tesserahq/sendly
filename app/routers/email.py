@@ -104,6 +104,10 @@ def list_emails(
         Optional[str],
         Query(description="Filter by exact tag membership"),
     ] = None,
+    status: Annotated[
+        Optional[str],
+        Query(description="Filter by email status (e.g. 'opened', 'delivered')"),
+    ] = None,
     db: Session = Depends(get_db),
     params: Params = Depends(),
     _authorized: bool = Depends(rbac["read"]),
@@ -115,6 +119,7 @@ def list_emails(
         project_id: The UUID of the project
         batch_id: Optional broadcast batch_id filter
         tag: Optional exact tag filter
+        status: Optional email status filter
         db: Database session
         params: Pagination parameters
 
@@ -135,5 +140,7 @@ def list_emails(
         query = query.filter(EmailModel.batch_id == batch_id)
     if tag:
         query = query.filter(EmailModel.tags.contains([tag]))
+    if status:
+        query = query.filter(EmailModel.status == status)
 
     return paginate(query, params)
