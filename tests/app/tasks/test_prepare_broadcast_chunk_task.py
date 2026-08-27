@@ -236,3 +236,79 @@ class TestPrepareBroadcastChunkTask:
                 .first()
             )
             assert row.prepared is True
+
+
+class TestRecipientToEmailLink:
+    """The nullable, unique broadcast_recipients.email_id relationship is
+    populated by the prepare stage for successfully rendered recipients
+    only — suppressed recipients and rendering failures never get one."""
+
+    def test_successfully_prepared_recipient_is_linked_to_its_email(self, real_db):
+        project_id = uuid4()
+        batch = _make_batch(real_db, project_id)
+        recipient = _make_recipient(real_db, batch)
+
+        with patch(
+            "app.tasks.prepare_broadcast_chunk_task.get_default_provider"
+        ) as mock_provider:
+            mock_provider.return_value.provider_id = "postmark"
+            prepare_broadcast_chunk_task(str(batch.id), [str(recipient.id)])
+
+        real_db.expire_all()
+        email = (
+            real_db.query(Email)
+            .filter(Email.to_email == "recipient@example.com")
+            .first()
+        )
+        recipient_row = (
+            real_db.query(BroadcastRecipient)
+            .filter(BroadcastRecipient.id == recipient.id)
+            .first()
+        )
+        assert recipient_row.email_id == email.id
+
+    def test_suppressed_recipient_has_no_email_link(self, real_db):
+        project_id = uuid4()
+        batch = _make_batch(real_db, project_id)
+        recipient = _make_recipient(real_db, batch, suppressed=False)
+        real_db.add(
+            EmailSuppression(
+                project_id=project_id,
+                email="recipient@example.com",
+                unsubscribed_at="2026-01-01T00:00:00+00:00",
+                source="test",
+            )
+        )
+        real_db.commit()
+
+        prepare_broadcast_chunk_task(str(batch.id), [str(recipient.id)])
+
+        real_db.expire_all()
+        recipient_row = (
+            real_db.query(BroadcastRecipient)
+            .filter(BroadcastRecipient.id == recipient.id)
+            .first()
+        )
+        assert recipient_row.email_id is None
+
+    def test_rendering_failure_leaves_recipient_unlinked(self, real_db):
+        project_id = uuid4()
+        batch = _make_batch(real_db, project_id, html="<p>Plan: ${plan}</p>")
+        recipient = _make_recipient(real_db, batch, attributes={})
+
+        with (
+            patch(
+                "app.tasks.prepare_broadcast_chunk_task.get_default_provider"
+            ) as mock_provider,
+            patch("app.tasks.prepare_broadcast_chunk_task.logger"),
+        ):
+            mock_provider.return_value.provider_id = "postmark"
+            prepare_broadcast_chunk_task(str(batch.id), [str(recipient.id)])
+
+        real_db.expire_all()
+        recipient_row = (
+            real_db.query(BroadcastRecipient)
+            .filter(BroadcastRecipient.id == recipient.id)
+            .first()
+        )
+        assert recipient_row.email_id is None

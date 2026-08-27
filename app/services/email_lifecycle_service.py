@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
@@ -40,6 +41,38 @@ _TERMINAL_STATUSES: frozenset[str] = frozenset(
     }
 )
 
+# Forward-progression ranks for the non-terminal happy-path statuses. A
+# webhook that would move status backward within this set (e.g. an "opened"
+# event arriving after a "clicked" one already advanced status) is ignored
+# for status purposes — but engagement timestamps are still recorded
+# independently (see record_webhook_event), so out-of-order delivery never
+# discards evidence of engagement, only a status regression.
+_PROGRESSION_RANK: dict[str, int] = {
+    EmailStatus.SENT: 1,
+    EmailStatus.DELIVERED: 2,
+    EmailStatus.OPENED: 3,
+    EmailStatus.CLICKED: 4,
+}
+
+
+@dataclass(frozen=True)
+class WebhookOutcome:
+    """Result of recording one webhook event.
+
+    status_changed_to is the new Email.status if this event actually
+    advanced it, or None for a no-op (unknown type, no forward progress, or
+    an already-terminal email). first_opened/first_clicked are True only on
+    the webhook delivery that actually transitioned the corresponding
+    timestamp from null — computed via an atomic conditional update, so
+    duplicate/concurrent webhook deliveries for the same email produce the
+    flag exactly once. Callers use these to decide whether to increment
+    batch-level counters without re-implementing this idempotency.
+    """
+
+    status_changed_to: Optional[str] = None
+    first_opened: bool = False
+    first_clicked: bool = False
+
 
 class EmailLifecycleService:
     """
@@ -66,19 +99,25 @@ class EmailLifecycleService:
         event_type: str,
         occurred_at: datetime,
         raw_payload: dict[str, Any],
-    ) -> Optional[str]:
+    ) -> WebhookOutcome:
         """
-        Persist one webhook event row and advance Email.status if appropriate.
+        Persist one webhook event row, atomically record first-open/
+        first-click if this event is one, and advance Email.status if
+        appropriate.
 
         Unknown event types are accepted — the event row is written but
-        Email.status is left unchanged (forward-compatible with new provider events).
-        Terminal statuses (bounced, complained, dropped, failed) are never overwritten.
+        Email.status is left unchanged (forward-compatible with new provider
+        events). Terminal statuses (bounced, complained, dropped, failed)
+        are never overwritten, and status never regresses within the
+        happy-path progression (sent -> delivered -> opened -> clicked).
 
-        Returns the new Email.status if this event actually changed it, or
-        None if the event was a no-op (unknown type, already at that status,
-        or the email was already terminal) — callers use this to tell a
-        genuine first-time transition apart from a duplicate/retried webhook
-        delivery for the same event.
+        First-open/first-click are recorded independently of status: an
+        out-of-order webhook that doesn't change status still records its
+        engagement timestamp, and a click never synthesizes an open.
+
+        Returns a WebhookOutcome describing what actually changed — callers
+        use this to tell a genuine first-time transition/occurrence apart
+        from a duplicate/retried or out-of-order webhook delivery.
         """
         self._create_event(
             email_id=email.id,
@@ -86,7 +125,21 @@ class EmailLifecycleService:
             occurred_at=occurred_at,
             details=raw_payload,
         )
-        return self._advance_status_and_opened_at(email, event_type, occurred_at)
+
+        first_opened = False
+        first_clicked = False
+        if event_type == "opened":
+            first_opened = self._repo.set_first_opened_at(email.id, occurred_at)
+        elif event_type == "clicked":
+            first_clicked = self._repo.set_first_clicked_at(email.id, occurred_at)
+
+        new_status = self._advance_status(email, event_type)
+
+        return WebhookOutcome(
+            status_changed_to=new_status,
+            first_opened=first_opened,
+            first_clicked=first_clicked,
+        )
 
     # ------------------------------------------------------------------
     # Send path (SendEmailCommand)
@@ -199,22 +252,17 @@ class EmailLifecycleService:
             )
         )
 
-    def _advance_status_and_opened_at(
-        self, email: Email, event_type: str, occurred_at: datetime
-    ) -> Optional[str]:
+    def _advance_status(self, email: Email, event_type: str) -> Optional[str]:
         new_status = _WEBHOOK_EVENT_TO_STATUS.get(event_type)
-        if new_status is not None and (
-            email.status in _TERMINAL_STATUSES or new_status == email.status
-        ):
-            new_status = None  # no-op / already terminal; never overwrite
-
-        fields: dict[str, Any] = {}
-        if new_status is not None:
-            fields["status"] = new_status
-        if event_type == "opened" and email.opened_at is None:
-            fields["opened_at"] = occurred_at
-
-        if not fields:
+        if new_status is None:
             return None
-        self._repo.update_email(email.id, EmailUpdate(**fields))
+        if email.status in _TERMINAL_STATUSES or new_status == email.status:
+            return None  # already terminal / no-op; never overwrite
+
+        old_rank = _PROGRESSION_RANK.get(email.status)
+        new_rank = _PROGRESSION_RANK.get(new_status)
+        if old_rank is not None and new_rank is not None and new_rank <= old_rank:
+            return None  # out-of-order webhook; don't regress status
+
+        self._repo.update_email(email.id, EmailUpdate(status=new_status))
         return new_status

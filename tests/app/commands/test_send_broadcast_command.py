@@ -246,6 +246,109 @@ class TestSendBroadcastCommand:
         assert exc_info.value.status_code == 409
 
 
+class TestClientReferenceId:
+    """Caller-supplied client_reference_id: optional, persisted, unique
+    within one batch, reusable across batches, and part of the idempotency
+    fingerprint."""
+
+    def test_persists_client_reference_id_per_recipient(self, db):
+        ref_a, ref_b = uuid4(), uuid4()
+        req = _make_request(
+            uuid4(),
+            recipients=[
+                {"email": "a@example.com", "client_reference_id": str(ref_a)},
+                {"email": "b@example.com", "client_reference_id": str(ref_b)},
+            ],
+        )
+
+        batch = SendBroadcastCommand(db).execute(req)
+
+        recipients = {
+            r.email: r.client_reference_id
+            for r in db.query(BroadcastRecipient)
+            .filter(BroadcastRecipient.broadcast_batch_id == batch.id)
+            .all()
+        }
+        assert recipients["a@example.com"] == ref_a
+        assert recipients["b@example.com"] == ref_b
+
+    def test_omitted_client_reference_id_defaults_to_null(self, db):
+        batch = SendBroadcastCommand(db).execute(_make_request(uuid4()))
+
+        recipients = (
+            db.query(BroadcastRecipient)
+            .filter(BroadcastRecipient.broadcast_batch_id == batch.id)
+            .all()
+        )
+        assert all(r.client_reference_id is None for r in recipients)
+
+    def test_multiple_recipients_without_reference_in_same_batch_is_allowed(self, db):
+        """Postgres unique constraints treat NULL as distinct, so this must
+        not raise even though the DB has a per-batch uniqueness constraint."""
+        req = _make_request(
+            uuid4(),
+            recipients=[
+                {"email": "a@example.com"},
+                {"email": "b@example.com"},
+            ],
+        )
+        batch = SendBroadcastCommand(db).execute(req)
+        assert batch.queued_count == 2
+
+    def test_duplicate_client_reference_id_in_one_request_is_rejected(self, db):
+        ref = str(uuid4())
+        req = _make_request(
+            uuid4(),
+            recipients=[
+                {"email": "a@example.com", "client_reference_id": ref},
+                {"email": "b@example.com", "client_reference_id": ref},
+            ],
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            SendBroadcastCommand(db).execute(req)
+
+        assert exc_info.value.status_code == 422
+        assert db.query(BroadcastBatch).count() == 0
+
+    def test_same_reference_reused_across_different_batches_is_allowed(self, db):
+        ref = str(uuid4())
+        first_req = _make_request(
+            uuid4(), recipients=[{"email": "a@example.com", "client_reference_id": ref}]
+        )
+        second_req = _make_request(
+            uuid4(), recipients=[{"email": "b@example.com", "client_reference_id": ref}]
+        )
+
+        first_batch = SendBroadcastCommand(db).execute(first_req)
+        second_batch = SendBroadcastCommand(db).execute(second_req)
+
+        assert first_batch.id != second_batch.id
+
+    def test_idempotency_key_conflicts_when_reference_changes(self, db):
+        project_id = uuid4()
+        req = _make_request(
+            project_id,
+            idempotency_key="ref-key",
+            recipients=[
+                {"email": "a@example.com", "client_reference_id": str(uuid4())}
+            ],
+        )
+        SendBroadcastCommand(db).execute(req)
+
+        retry_with_different_ref = _make_request(
+            project_id,
+            idempotency_key="ref-key",
+            recipients=[
+                {"email": "a@example.com", "client_reference_id": str(uuid4())}
+            ],
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            SendBroadcastCommand(db).execute(retry_with_different_ref)
+
+        assert exc_info.value.status_code == 409
+
+
 class TestGlobalBroadcast:
     """project_id is optional to support org-wide (not project-scoped)
     broadcasts. These pass project_id=None through _make_request and check

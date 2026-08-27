@@ -17,12 +17,17 @@ from app.auth.rbac import (
 )
 from app.commands.send_broadcast_command import SendBroadcastCommand
 from app.db import get_db
+from app.models.broadcast_batch import BroadcastBatch
 from app.repositories.broadcast_repository import BroadcastRepository
 from app.schemas.broadcast import (
     BroadcastBatchSummary,
     BroadcastCreateRequest,
+    BroadcastRecipientResult,
     BroadcastSendResponse,
     BroadcastStatusResponse,
+)
+from app.services.broadcast_recipient_results_service import (
+    BroadcastRecipientResultsService,
 )
 
 router = APIRouter(
@@ -92,29 +97,18 @@ def list_broadcasts(
     return paginate(query, params)
 
 
-@router.get("/{batch_id}", response_model=BroadcastStatusResponse)
-async def get_broadcast(
-    batch_id: str,
-    request: Request,
-    db: Session = Depends(get_db),
-) -> BroadcastStatusResponse:
-    """Accept-time counts plus prepare/send progress for one batch, read
-    from the denormalized prepared_count/finished columns.
+async def _authorize_batch_read(batch: BroadcastBatch, request: Request) -> None:
+    """Shared authorization for both batch-scoped GET endpoints.
 
-    batch_id is server-generated and globally unique, so the DB lookup
-    below isn't scoped by project_id — but that means project_id can't be
-    trusted from the caller for authorization either. Instead, this loads
-    the batch first, then authorizes against its *actual* project_id.
+    batch_id is server-generated and globally unique, so the DB lookup that
+    finds `batch` isn't scoped by project_id — but that means project_id
+    can't be trusted from the caller for authorization either. Callers must
+    load the batch first, then authorize against its *actual* project_id.
     Omitting project_id (or passing an unrelated one) no longer bypasses
     tenant isolation: a caller is only authorized if they're allowed to
     read `sendly.broadcast` in the batch's real project (or hold a
     global/super-admin grant, via Custos's own domain semantics).
     """
-    repo = BroadcastRepository(db)
-    batch = repo.get_batch_by_batch_id(batch_id)
-    if batch is None:
-        raise HTTPException(status_code=404, detail="Broadcast batch not found")
-
     check_read = authorize(
         resource=f"{PREFIX}.{RESOURCE}",
         action=RBACActions.READ,
@@ -123,6 +117,22 @@ async def get_broadcast(
         ),
     )
     await check_read(request)
+
+
+@router.get("/{batch_id}", response_model=BroadcastStatusResponse)
+async def get_broadcast(
+    batch_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> BroadcastStatusResponse:
+    """Accept-time counts plus prepare/send progress for one batch, read
+    from the denormalized prepared_count/finished columns."""
+    repo = BroadcastRepository(db)
+    batch = repo.get_batch_by_batch_id(batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Broadcast batch not found")
+
+    await _authorize_batch_read(batch, request)
 
     return BroadcastStatusResponse(
         batch_id=batch.batch_id,
@@ -134,4 +144,27 @@ async def get_broadcast(
         bounced_count=batch.bounced_count,
         complained_count=batch.complained_count,
         opened_count=batch.opened_count,
+        clicked_count=batch.clicked_count,
     )
+
+
+@router.get("/{batch_id}/recipients", response_model=Page[BroadcastRecipientResult])
+async def list_broadcast_recipients(
+    batch_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    params: Params = Depends(),
+) -> Page[BroadcastRecipientResult]:
+    """Paginated per-recipient results for one batch: submitted identity,
+    preparation/suppression outcome, resulting email identity/status (when
+    one exists), and first-open/first-click timestamps. Suppressed
+    recipients and preparation failures remain visible with null
+    email/engagement fields."""
+    repo = BroadcastRepository(db)
+    batch = repo.get_batch_by_batch_id(batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Broadcast batch not found")
+
+    await _authorize_batch_read(batch, request)
+
+    return BroadcastRecipientResultsService(db).get_page(batch, params)

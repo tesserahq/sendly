@@ -14,6 +14,9 @@ class BroadcastRecipient(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     attributes: Dict[str, Any] = Field(default_factory=dict)
+    client_reference_id: Optional[UUID] = None
+    """Caller-owned correlation id. Optional; must be unique within one
+    broadcast batch when supplied. Has no template-rendering semantics."""
 
 
 class BroadcastCreateRequest(BaseModel):
@@ -110,12 +113,14 @@ class BroadcastStatusResponse(BaseModel):
     bounced_count: int
     complained_count: int
     opened_count: int
+    clicked_count: int
     """Delivery-outcome rollups, denormalized from webhook ingestion — see
-    BroadcastRepository.increment_delivery_counter. Each counts emails that
-    have ever reached that status; unlike prepared_count/finished, these
-    keep updating indefinitely after the batch is finished. opened_count is
-    approximate: a Click webhook arriving before its Open webhook for the
-    same email can skip past "opened", causing a rare undercount."""
+    BroadcastRepository.increment_delivery_counter. delivered/bounced/
+    complained each count emails that have ever reached that status; unlike
+    prepared_count/finished, these keep updating indefinitely after the
+    batch is finished. opened_count/clicked_count are exact first-occurrence
+    counts (see EmailLifecycleService.record_webhook_event) — independent of
+    Email.status and unaffected by out-of-order or duplicate webhooks."""
 
 
 class BroadcastBatchSummary(BaseModel):
@@ -138,4 +143,28 @@ class BroadcastBatchSummary(BaseModel):
     bounced_count: int
     complained_count: int
     opened_count: int
+    clicked_count: int
     created_at: datetime
+
+
+class BroadcastRecipientResult(BaseModel):
+    """One row of GET /broadcasts/{batch_id}/recipients.
+
+    Starts from the durable broadcast-recipient row (not the email list) so
+    suppressed recipients and preparation failures stay visible even though
+    they have no resulting email. email_id/email_status/opened_at/clicked_at
+    are null in that case — suppressed/prepared explain the known outcome
+    without fabricating an email status.
+    """
+
+    model_config = {"from_attributes": True}
+
+    id: UUID
+    client_reference_id: Optional[UUID] = None
+    email: str
+    suppressed: bool
+    prepared: bool
+    email_id: Optional[UUID] = None
+    email_status: Optional[str] = None
+    opened_at: Optional[datetime] = None
+    clicked_at: Optional[datetime] = None

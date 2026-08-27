@@ -455,3 +455,103 @@ def test_search_email_events_with_filters(db, sample_email):
     assert isinstance(results, list)
     assert len(results) >= 3
     assert all(e.email_id == sample_email.id for e in results)
+
+
+class TestSetFirstOpenedAt:
+    def test_sets_opened_at_and_returns_true_the_first_time(self, db, sample_email):
+        repo = EmailRepository(db)
+        occurred_at = datetime.now(timezone.utc)
+
+        result = repo.set_first_opened_at(sample_email.id, occurred_at)
+
+        assert result is True
+        db.refresh(sample_email)
+        assert sample_email.opened_at is not None
+
+    def test_second_call_is_a_no_op_and_returns_false(self, db, sample_email):
+        repo = EmailRepository(db)
+        repo.set_first_opened_at(sample_email.id, datetime.now(timezone.utc))
+        db.refresh(sample_email)
+        first_opened_at = sample_email.opened_at
+
+        result = repo.set_first_opened_at(sample_email.id, datetime.now(timezone.utc))
+
+        assert result is False
+        db.refresh(sample_email)
+        assert sample_email.opened_at == first_opened_at
+
+
+class TestSetFirstClickedAt:
+    def test_sets_clicked_at_and_returns_true_the_first_time(self, db, sample_email):
+        repo = EmailRepository(db)
+        occurred_at = datetime.now(timezone.utc)
+
+        result = repo.set_first_clicked_at(sample_email.id, occurred_at)
+
+        assert result is True
+        db.refresh(sample_email)
+        assert sample_email.clicked_at is not None
+
+    def test_second_call_is_a_no_op_and_returns_false(self, db, sample_email):
+        repo = EmailRepository(db)
+        repo.set_first_clicked_at(sample_email.id, datetime.now(timezone.utc))
+
+        result = repo.set_first_clicked_at(sample_email.id, datetime.now(timezone.utc))
+
+        assert result is False
+
+    def test_independent_of_opened_at(self, db, sample_email):
+        """A click never synthesizes an open — see PRD out-of-scope note."""
+        repo = EmailRepository(db)
+
+        repo.set_first_clicked_at(sample_email.id, datetime.now(timezone.utc))
+
+        db.refresh(sample_email)
+        assert sample_email.clicked_at is not None
+        assert sample_email.opened_at is None
+
+
+class TestFirstOccurrenceConcurrency:
+    def test_concurrent_duplicate_clicks_produce_one_first_transition(
+        self, real_db, engine
+    ):
+        """Regression test for the atomicity requirement: two concurrent
+        webhook deliveries for the same email's first click must not both
+        believe they were first. Each thread uses its own DB session/
+        connection (mirroring two concurrent request handlers), and the
+        conditional UPDATE ... WHERE clicked_at IS NULL is what prevents a
+        double-count under a real Postgres row lock."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        from sqlalchemy.orm import sessionmaker
+
+        from app.models.email import Email
+        from app.repositories.email_repository import EmailRepository
+
+        email = Email(
+            from_email="sender@example.com",
+            to_email="recipient@example.com",
+            subject="Test",
+            body="Body",
+            status="sent",
+            provider="postmark",
+        )
+        real_db.add(email)
+        real_db.commit()
+        real_db.refresh(email)
+        email_id = email.id
+
+        Session = sessionmaker(bind=engine)
+
+        def _attempt_first_click():
+            session = Session()
+            try:
+                repo = EmailRepository(session)
+                return repo.set_first_clicked_at(email_id, datetime.now(timezone.utc))
+            finally:
+                session.close()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: _attempt_first_click(), range(2)))
+
+        assert sorted(results) == [False, True]

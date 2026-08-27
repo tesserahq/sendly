@@ -205,3 +205,151 @@ class TestProcessDeliveryEventsCommand:
         )
         assert email1.status == EmailStatus.DELIVERED
         assert email2.status == EmailStatus.OPENED
+
+
+class TestEngagementCounters:
+    """opened_count/clicked_count on the batch are driven by the
+    first-occurrence outcome, not by Email.status transitions — see
+    EmailLifecycleService.WebhookOutcome."""
+
+    def _make_batch_and_email(self, db, provider_msg_id, batch_status="clicked"):
+        from app.models.broadcast_batch import BroadcastBatch
+
+        batch = BroadcastBatch(
+            project_id=uuid4(),
+            batch_id=str(uuid4()),
+            content_spec={},
+            queued_count=1,
+            suppressed_count=0,
+        )
+        db.add(batch)
+        db.commit()
+        db.refresh(batch)
+
+        email = Email(
+            id=uuid4(),
+            from_email="sender@example.com",
+            to_email="recipient@example.com",
+            subject="Test",
+            body="Body",
+            status=EmailStatus.SENT,
+            provider="postmark",
+            provider_message_id=provider_msg_id,
+            batch_id=batch.batch_id,
+            sent_at=datetime.now(timezone.utc),
+        )
+        db.add(email)
+        db.commit()
+        return batch, email
+
+    def test_opened_webhook_increments_opened_count_once(self, db):
+        batch, email = self._make_batch_and_email(db, "msg-opened-1")
+
+        mock_provider = Mock()
+        mock_provider.provider_id = "postmark"
+        mock_provider.verify_webhook.return_value = True
+        mock_provider.parse_webhook.return_value = [
+            EmailEvent(
+                provider_name="postmark",
+                provider_message_id="msg-opened-1",
+                type="opened",
+                occurred_at=datetime.now(timezone.utc),
+                raw_payload={},
+            )
+        ]
+
+        command = ProcessDeliveryEventsCommand(db)
+        command.execute(
+            provider=mock_provider,
+            body_bytes=b"{}",
+            payload={},
+            headers={},
+        )
+        # A duplicate delivery of the same open event must not double-count.
+        command.execute(
+            provider=mock_provider,
+            body_bytes=b"{}",
+            payload={},
+            headers={},
+        )
+
+        db.expire_all()
+        from app.models.broadcast_batch import BroadcastBatch
+
+        refreshed = db.query(BroadcastBatch).filter(BroadcastBatch.id == batch.id).one()
+        assert refreshed.opened_count == 1
+        assert refreshed.clicked_count == 0
+
+    def test_clicked_webhook_increments_clicked_count_once(self, db):
+        batch, email = self._make_batch_and_email(db, "msg-clicked-1")
+
+        mock_provider = Mock()
+        mock_provider.provider_id = "postmark"
+        mock_provider.verify_webhook.return_value = True
+        mock_provider.parse_webhook.return_value = [
+            EmailEvent(
+                provider_name="postmark",
+                provider_message_id="msg-clicked-1",
+                type="clicked",
+                occurred_at=datetime.now(timezone.utc),
+                raw_payload={},
+            )
+        ]
+
+        command = ProcessDeliveryEventsCommand(db)
+        command.execute(
+            provider=mock_provider, body_bytes=b"{}", payload={}, headers={}
+        )
+        # Repeated click on the same link/email must not double-count.
+        command.execute(
+            provider=mock_provider, body_bytes=b"{}", payload={}, headers={}
+        )
+
+        db.expire_all()
+        from app.models.broadcast_batch import BroadcastBatch
+
+        refreshed = db.query(BroadcastBatch).filter(BroadcastBatch.id == batch.id).one()
+        assert refreshed.clicked_count == 1
+        assert refreshed.opened_count == 0
+
+    def test_click_before_open_increments_both_counts_exactly_once(self, db):
+        """Out-of-order delivery: click arrives first (advances status to
+        CLICKED), then open arrives (does not regress status) — both
+        engagement counters still increment exactly once each."""
+        batch, email = self._make_batch_and_email(db, "msg-order-1")
+
+        mock_provider = Mock()
+        mock_provider.provider_id = "postmark"
+        mock_provider.verify_webhook.return_value = True
+
+        def _events(event_type):
+            return [
+                EmailEvent(
+                    provider_name="postmark",
+                    provider_message_id="msg-order-1",
+                    type=event_type,
+                    occurred_at=datetime.now(timezone.utc),
+                    raw_payload={},
+                )
+            ]
+
+        command = ProcessDeliveryEventsCommand(db)
+        mock_provider.parse_webhook.return_value = _events("clicked")
+        command.execute(
+            provider=mock_provider, body_bytes=b"{}", payload={}, headers={}
+        )
+        mock_provider.parse_webhook.return_value = _events("opened")
+        command.execute(
+            provider=mock_provider, body_bytes=b"{}", payload={}, headers={}
+        )
+
+        db.expire_all()
+        from app.models.broadcast_batch import BroadcastBatch
+
+        refreshed = db.query(BroadcastBatch).filter(BroadcastBatch.id == batch.id).one()
+        assert refreshed.clicked_count == 1
+        assert refreshed.opened_count == 1
+        updated_email = (
+            db.query(Email).filter(Email.provider_message_id == "msg-order-1").first()
+        )
+        assert updated_email.status == EmailStatus.CLICKED  # not regressed to opened
