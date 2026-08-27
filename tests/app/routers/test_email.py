@@ -125,6 +125,64 @@ class TestEmailRouter:
         assert str(tagged.id) in ids
         assert str(untagged.id) not in ids
 
+    def test_list_emails_filters_by_to_email(self, client, db, faker):
+        from app.models.email import Email
+
+        matching = Email(
+            from_email=faker.email(),
+            to_email="Alice.Smith@Example.com",
+            subject="Broadcast",
+            body="Body",
+            status="queued",
+            provider="postmark",
+        )
+        other = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Other",
+            body="Body",
+            status="queued",
+            provider="postmark",
+        )
+        db.add_all([matching, other])
+        db.commit()
+
+        response = client.get("/emails", params={"to_email": "alice.smith"})
+
+        assert response.status_code == status.HTTP_200_OK
+        ids = [item["id"] for item in response.json()["items"]]
+        assert str(matching.id) in ids
+        assert str(other.id) not in ids
+
+    def test_list_emails_filters_by_subject(self, client, db, faker):
+        from app.models.email import Email
+
+        matching = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Welcome to Sendly",
+            body="Body",
+            status="queued",
+            provider="postmark",
+        )
+        other = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Password reset",
+            body="Body",
+            status="queued",
+            provider="postmark",
+        )
+        db.add_all([matching, other])
+        db.commit()
+
+        response = client.get("/emails", params={"subject": "welcome"})
+
+        assert response.status_code == status.HTTP_200_OK
+        ids = [item["id"] for item in response.json()["items"]]
+        assert str(matching.id) in ids
+        assert str(other.id) not in ids
+
     def test_email_response_includes_tags_and_metadata(self, client, db, faker):
         from app.models.email import Email
 
