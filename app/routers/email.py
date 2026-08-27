@@ -108,6 +108,16 @@ def list_emails(
         Optional[str],
         Query(description="Filter by email status (e.g. 'opened', 'delivered')"),
     ] = None,
+    to_email: Annotated[
+        Optional[str],
+        Query(
+            description="Filter by recipient email (case-insensitive, partial match)"
+        ),
+    ] = None,
+    subject: Annotated[
+        Optional[str],
+        Query(description="Filter by subject (case-insensitive, partial match)"),
+    ] = None,
     db: Session = Depends(get_db),
     params: Params = Depends(),
     _authorized: bool = Depends(rbac["read"]),
@@ -120,6 +130,8 @@ def list_emails(
         batch_id: Optional broadcast batch_id filter
         tag: Optional exact tag filter
         status: Optional email status filter
+        to_email: Optional recipient email filter (partial match)
+        subject: Optional subject filter (partial match)
         db: Database session
         params: Pagination parameters
 
@@ -142,5 +154,9 @@ def list_emails(
         query = query.filter(EmailModel.tags.contains([tag]))
     if status:
         query = query.filter(EmailModel.status == status)
+    if to_email:
+        query = query.filter(EmailModel.to_email.ilike(f"%{to_email}%"))
+    if subject:
+        query = query.filter(EmailModel.subject.ilike(f"%{subject}%"))
 
     return paginate(query, params)
