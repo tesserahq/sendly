@@ -22,9 +22,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column(
         "broadcast_recipients",
-        sa.Column(
-            "client_reference_id", postgresql.UUID(as_uuid=True), nullable=True
-        ),
+        sa.Column("client_reference_id", postgresql.UUID(as_uuid=True), nullable=True),
     )
     op.add_column(
         "broadcast_recipients",
@@ -65,8 +63,7 @@ def upgrade() -> None:
     # NOT NULL) — the app's soft-delete filter hides them from every ORM
     # query, so a raw-SQL backfill must exclude them too, or counts here
     # would disagree with what the app ever computes at runtime.
-    op.execute(
-        """
+    op.execute("""
         UPDATE emails e
         SET clicked_at = sub.first_clicked
         FROM (
@@ -76,13 +73,11 @@ def upgrade() -> None:
             GROUP BY ee.email_id
         ) sub
         WHERE e.id = sub.email_id AND e.clicked_at IS NULL AND e.deleted_at IS NULL
-        """
-    )
+        """)
 
     # Backfill batch clicked_count from distinct emails with a click
     # timestamp.
-    op.execute(
-        """
+    op.execute("""
         UPDATE broadcast_batches b
         SET clicked_count = sub.cnt
         FROM (
@@ -93,16 +88,14 @@ def upgrade() -> None:
             GROUP BY batch_id
         ) sub
         WHERE b.batch_id = sub.batch_id AND b.deleted_at IS NULL
-        """
-    )
+        """)
 
     # Recompute opened_count from first-open timestamps so both engagement
     # counters start from the same first-occurrence semantics. Reset first so
     # batches with no first-open emails end up at zero rather than keeping a
     # stale value.
     op.execute("UPDATE broadcast_batches SET opened_count = 0 WHERE deleted_at IS NULL")
-    op.execute(
-        """
+    op.execute("""
         UPDATE broadcast_batches b
         SET opened_count = sub.cnt
         FROM (
@@ -113,8 +106,7 @@ def upgrade() -> None:
             GROUP BY batch_id
         ) sub
         WHERE b.batch_id = sub.batch_id AND b.deleted_at IS NULL
-        """
-    )
+        """)
 
     # Not backfilled: broadcast_recipients.email_id for historical batches.
     # Duplicate addresses are valid, so correlating by email would create
