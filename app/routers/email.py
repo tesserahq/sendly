@@ -1,5 +1,6 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from uuid import UUID
 from fastapi_pagination import Page, Params
@@ -118,6 +119,12 @@ def list_emails(
         Optional[str],
         Query(description="Filter by subject (case-insensitive, partial match)"),
     ] = None,
+    q: Annotated[
+        Optional[str],
+        Query(
+            description="Search recipient email or subject (case-insensitive, partial match)"
+        ),
+    ] = None,
     db: Session = Depends(get_db),
     params: Params = Depends(),
     _authorized: bool = Depends(rbac["read"]),
@@ -132,6 +139,7 @@ def list_emails(
         status: Optional email status filter
         to_email: Optional recipient email filter (partial match)
         subject: Optional subject filter (partial match)
+        q: Optional search across recipient email and subject (partial match)
         db: Database session
         params: Pagination parameters
 
@@ -158,5 +166,12 @@ def list_emails(
         query = query.filter(EmailModel.to_email.ilike(f"%{to_email}%"))
     if subject:
         query = query.filter(EmailModel.subject.ilike(f"%{subject}%"))
+    if q:
+        query = query.filter(
+            or_(
+                EmailModel.to_email.ilike(f"%{q}%"),
+                EmailModel.subject.ilike(f"%{q}%"),
+            )
+        )
 
     return paginate(query, params)

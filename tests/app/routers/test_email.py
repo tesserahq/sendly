@@ -183,6 +183,46 @@ class TestEmailRouter:
         assert str(matching.id) in ids
         assert str(other.id) not in ids
 
+    def test_list_emails_filters_by_q_matches_to_email_or_subject(
+        self, client, db, faker
+    ):
+        from app.models.email import Email
+
+        matches_email = Email(
+            from_email=faker.email(),
+            to_email="bob.jones@example.com",
+            subject="Newsletter",
+            body="Body",
+            status="queued",
+            provider="postmark",
+        )
+        matches_subject = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Bob's invoice",
+            body="Body",
+            status="queued",
+            provider="postmark",
+        )
+        no_match = Email(
+            from_email=faker.email(),
+            to_email=faker.email(),
+            subject="Password reset",
+            body="Body",
+            status="queued",
+            provider="postmark",
+        )
+        db.add_all([matches_email, matches_subject, no_match])
+        db.commit()
+
+        response = client.get("/emails", params={"q": "bob"})
+
+        assert response.status_code == status.HTTP_200_OK
+        ids = [item["id"] for item in response.json()["items"]]
+        assert str(matches_email.id) in ids
+        assert str(matches_subject.id) in ids
+        assert str(no_match.id) not in ids
+
     def test_email_response_includes_tags_and_metadata(self, client, db, faker):
         from app.models.email import Email
 
