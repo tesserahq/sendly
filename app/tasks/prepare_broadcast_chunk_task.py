@@ -152,6 +152,7 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> N
             message_stream=message_stream,
         )
         outbox_repo.create_entry(email_id=email.id)
+        broadcast_repo.link_recipient_to_email(recipient.id, email.id)
         created_email_ids.append(email.id)
 
     broadcast_repo.mark_recipients_prepared(prepared_ids)

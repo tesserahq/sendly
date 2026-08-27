@@ -42,6 +42,11 @@ class BroadcastBatch(Base, TimestampMixin, SoftDeleteMixin):
     # "opened" and the later Open event won't increment this — an accepted,
     # rare undercount rather than exact.
     opened_count = Column(Integer, nullable=False, default=0)
+    # Counts emails that have ever received an accepted click webhook,
+    # incremented from the same first-occurrence outcome mechanism as
+    # opened_count (see EmailLifecycleService.record_webhook_event) — exact,
+    # not affected by repeated clicks or multiple links.
+    clicked_count = Column(Integer, nullable=False, default=0)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

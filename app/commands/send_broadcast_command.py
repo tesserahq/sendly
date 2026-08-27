@@ -57,6 +57,8 @@ class SendBroadcastCommand:
         except MissingFieldError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
+        self._validate_unique_references(req.recipients)
+
         fingerprint = self._fingerprint(content_spec, req.recipients)
 
         if req.idempotency_key:
@@ -109,6 +111,25 @@ class SendBroadcastCommand:
         BroadcastPreparePublisher(self.db).dispatch_for_batch(batch.id)
 
         return batch
+
+    @staticmethod
+    def _validate_unique_references(recipients: List[BroadcastRecipient]) -> None:
+        """Non-null client_reference_id values must be unique within one
+        broadcast; reusing one across different batches is fine. Rejected as
+        a request-validation error before anything is persisted."""
+        seen: set = set()
+        for recipient in recipients:
+            if recipient.client_reference_id is None:
+                continue
+            if recipient.client_reference_id in seen:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Duplicate client_reference_id in request: "
+                        f"{recipient.client_reference_id}"
+                    ),
+                )
+            seen.add(recipient.client_reference_id)
 
     @staticmethod
     def _fingerprint(

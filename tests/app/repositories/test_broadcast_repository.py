@@ -96,15 +96,15 @@ class TestMaybeMarkFinished:
 
 
 class TestIncrementDeliveryCounter:
-    def test_increments_opened_count_for_opened_status(self, db):
+    def test_increments_delivered_count_for_delivered_status(self, db):
         repo = BroadcastRepository(db)
         batch = _make_batch(db)
 
-        repo.increment_delivery_counter(batch.id, EmailStatus.OPENED)
-        repo.increment_delivery_counter(batch.id, EmailStatus.OPENED)
+        repo.increment_delivery_counter(batch.id, EmailStatus.DELIVERED)
+        repo.increment_delivery_counter(batch.id, EmailStatus.DELIVERED)
 
         db.refresh(batch)
-        assert batch.opened_count == 2
+        assert batch.delivered_count == 2
 
     def test_is_a_no_op_for_untracked_statuses(self, db):
         repo = BroadcastRepository(db)
@@ -113,4 +113,51 @@ class TestIncrementDeliveryCounter:
         repo.increment_delivery_counter(batch.id, EmailStatus.SENT)
 
         db.refresh(batch)
+        assert batch.delivered_count == 0
+
+    def test_is_a_no_op_for_engagement_statuses(self, db):
+        """opened/clicked are no longer driven by increment_delivery_counter
+        — see TestIncrementEngagementCounter — since they're first-occurrence
+        outcomes rather than plain status transitions."""
+        repo = BroadcastRepository(db)
+        batch = _make_batch(db)
+
+        repo.increment_delivery_counter(batch.id, EmailStatus.OPENED)
+        repo.increment_delivery_counter(batch.id, EmailStatus.CLICKED)
+
+        db.refresh(batch)
         assert batch.opened_count == 0
+        assert batch.clicked_count == 0
+
+
+class TestIncrementEngagementCounter:
+    def test_increments_opened_count(self, db):
+        repo = BroadcastRepository(db)
+        batch = _make_batch(db)
+
+        repo.increment_engagement_counter(batch.id, "opened")
+        repo.increment_engagement_counter(batch.id, "opened")
+
+        db.refresh(batch)
+        assert batch.opened_count == 2
+        assert batch.clicked_count == 0
+
+    def test_increments_clicked_count(self, db):
+        repo = BroadcastRepository(db)
+        batch = _make_batch(db)
+
+        repo.increment_engagement_counter(batch.id, "clicked")
+
+        db.refresh(batch)
+        assert batch.clicked_count == 1
+        assert batch.opened_count == 0
+
+    def test_is_a_no_op_for_untracked_engagement_kinds(self, db):
+        repo = BroadcastRepository(db)
+        batch = _make_batch(db)
+
+        repo.increment_engagement_counter(batch.id, "bounced")
+
+        db.refresh(batch)
+        assert batch.opened_count == 0
+        assert batch.clicked_count == 0

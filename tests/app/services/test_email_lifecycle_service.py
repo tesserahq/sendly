@@ -218,3 +218,144 @@ class TestRecordWebhookEvent:
         repo.update_email.assert_called_once()
         update_arg = repo.update_email.call_args[0][1]
         assert update_arg.status == expected_status
+
+
+class TestRecordWebhookEventEngagementOutcome:
+    """First-open/first-click are recorded via an atomic conditional update
+    on the repo, independent of status transitions — see WebhookOutcome."""
+
+    def test_opened_event_calls_set_first_opened_at(self):
+        service, repo = _make_service()
+        repo.set_first_opened_at.return_value = True
+        email = _make_email(status=EmailStatus.SENT)
+        occurred_at = datetime.now(timezone.utc)
+
+        outcome = service.record_webhook_event(
+            email=email,
+            event_type="opened",
+            occurred_at=occurred_at,
+            raw_payload={},
+        )
+
+        repo.set_first_opened_at.assert_called_once_with(email.id, occurred_at)
+        repo.set_first_clicked_at.assert_not_called()
+        assert outcome.first_opened is True
+        assert outcome.first_clicked is False
+
+    def test_clicked_event_calls_set_first_clicked_at(self):
+        service, repo = _make_service()
+        repo.set_first_clicked_at.return_value = True
+        email = _make_email(status=EmailStatus.SENT)
+        occurred_at = datetime.now(timezone.utc)
+
+        outcome = service.record_webhook_event(
+            email=email,
+            event_type="clicked",
+            occurred_at=occurred_at,
+            raw_payload={},
+        )
+
+        repo.set_first_clicked_at.assert_called_once_with(email.id, occurred_at)
+        repo.set_first_opened_at.assert_not_called()
+        assert outcome.first_clicked is True
+        assert outcome.first_opened is False
+
+    def test_repeated_click_reports_first_clicked_false(self):
+        """Duplicate webhook delivery: the atomic repo call reports it was
+        not first, and the outcome reflects that — no double-count."""
+        service, repo = _make_service()
+        repo.set_first_clicked_at.return_value = False
+        email = _make_email(status=EmailStatus.CLICKED)
+
+        outcome = service.record_webhook_event(
+            email=email,
+            event_type="clicked",
+            occurred_at=datetime.now(timezone.utc),
+            raw_payload={},
+        )
+
+        assert outcome.first_clicked is False
+
+    def test_click_before_open_does_not_regress_status_but_records_open(self):
+        """Click already advanced status to CLICKED; a later, out-of-order
+        'opened' webhook must not move status backward, but must still
+        record first-open — status ordering never discards engagement
+        evidence."""
+        service, repo = _make_service()
+        repo.set_first_opened_at.return_value = True
+        email = _make_email(status=EmailStatus.CLICKED)
+
+        outcome = service.record_webhook_event(
+            email=email,
+            event_type="opened",
+            occurred_at=datetime.now(timezone.utc),
+            raw_payload={},
+        )
+
+        assert outcome.first_opened is True
+        assert outcome.status_changed_to is None
+        repo.update_email.assert_not_called()
+
+    def test_open_before_click_advances_status_normally(self):
+        service, repo = _make_service()
+        repo.set_first_clicked_at.return_value = True
+        email = _make_email(status=EmailStatus.OPENED)
+
+        outcome = service.record_webhook_event(
+            email=email,
+            event_type="clicked",
+            occurred_at=datetime.now(timezone.utc),
+            raw_payload={},
+        )
+
+        assert outcome.first_clicked is True
+        assert outcome.status_changed_to == EmailStatus.CLICKED
+        repo.update_email.assert_called_once()
+
+    def test_engagement_recorded_even_after_terminal_status(self):
+        """A terminal status (e.g. bounced) blocks status writes, but an
+        out-of-order open/click webhook still records its timestamp — status
+        ordering must not discard evidence of engagement."""
+        service, repo = _make_service()
+        repo.set_first_clicked_at.return_value = True
+        email = _make_email(status=EmailStatus.BOUNCED)
+
+        outcome = service.record_webhook_event(
+            email=email,
+            event_type="clicked",
+            occurred_at=datetime.now(timezone.utc),
+            raw_payload={},
+        )
+
+        assert outcome.first_clicked is True
+        assert outcome.status_changed_to is None
+        repo.update_email.assert_not_called()
+
+    def test_click_does_not_synthesize_open(self):
+        service, repo = _make_service()
+        email = _make_email(status=EmailStatus.SENT)
+
+        service.record_webhook_event(
+            email=email,
+            event_type="clicked",
+            occurred_at=datetime.now(timezone.utc),
+            raw_payload={},
+        )
+
+        repo.set_first_opened_at.assert_not_called()
+
+    def test_unrelated_event_does_not_touch_engagement_timestamps(self):
+        service, repo = _make_service()
+        email = _make_email(status=EmailStatus.SENT)
+
+        outcome = service.record_webhook_event(
+            email=email,
+            event_type="delivered",
+            occurred_at=datetime.now(timezone.utc),
+            raw_payload={},
+        )
+
+        repo.set_first_opened_at.assert_not_called()
+        repo.set_first_clicked_at.assert_not_called()
+        assert outcome.first_opened is False
+        assert outcome.first_clicked is False

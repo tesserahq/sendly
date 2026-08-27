@@ -139,6 +139,7 @@ class TestGetBroadcast:
         assert data["prepared_count"] == 2
         assert data["finished"] is True
         assert data["opened_count"] == 0
+        assert data["clicked_count"] == 0
 
     def test_get_broadcast_not_finished_until_send_stage_runs(self, broadcast_client):
         """Prepare-only: every Email/outbox row exists but nothing sent yet."""
@@ -314,6 +315,7 @@ class TestListBroadcasts:
         assert item["suppressed_count"] == 0
         assert item["prepared_count"] == 2
         assert item["finished"] is True
+        assert item["clicked_count"] == 0
 
     def test_list_broadcasts_filters_by_project_id(self, broadcast_client):
         project_id = uuid4()
@@ -366,3 +368,199 @@ class TestGetBroadcastAuthorization:
 
         assert response.status_code == status.HTTP_200_OK
         assert captured_domains == ["*"]
+
+
+class TestListBroadcastRecipients:
+    def test_returns_recipient_fields_including_engagement(self, broadcast_client):
+        project_id = uuid4()
+        with patched_providers():
+            send_response = broadcast_client.post(
+                "/broadcasts/send", json=_payload(project_id)
+            )
+        batch_id = send_response.json()["batch_id"]
+
+        response = broadcast_client.get(
+            f"/broadcasts/{batch_id}/recipients",
+            params={"project_id": str(project_id)},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["total"] == 2
+        emails = {item["email"] for item in data["items"]}
+        assert emails == {"a@example.com", "b@example.com"}
+        for item in data["items"]:
+            assert item["suppressed"] is False
+            assert item["prepared"] is True
+            assert item["email_id"] is not None
+            assert item["email_status"] is not None
+            assert item["opened_at"] is None
+            assert item["clicked_at"] is None
+            assert item["client_reference_id"] is None
+
+    def test_includes_client_reference_id_when_supplied(self, broadcast_client):
+        project_id = uuid4()
+        ref = str(uuid4())
+        with patched_providers():
+            send_response = broadcast_client.post(
+                "/broadcasts/send",
+                json=_payload(
+                    project_id,
+                    recipients=[{"email": "a@example.com", "client_reference_id": ref}],
+                ),
+            )
+        batch_id = send_response.json()["batch_id"]
+
+        response = broadcast_client.get(
+            f"/broadcasts/{batch_id}/recipients",
+            params={"project_id": str(project_id)},
+        )
+
+        item = response.json()["items"][0]
+        assert item["client_reference_id"] == ref
+
+    def test_prepared_and_suppressed_recipients_side_by_side(
+        self, broadcast_client, real_db
+    ):
+        """A batch with one normal and one suppressed recipient: the
+        suppressed row stays visible with null email/engagement fields."""
+        from datetime import datetime, timezone
+
+        from app.models.email_suppression import EmailSuppression
+
+        project_id = uuid4()
+        real_db.add(
+            EmailSuppression(
+                project_id=project_id,
+                email="suppressed@example.com",
+                unsubscribed_at=datetime.now(timezone.utc),
+                source="test",
+            )
+        )
+        real_db.commit()
+
+        with patched_providers():
+            response = broadcast_client.post(
+                "/broadcasts/send",
+                json=_payload(
+                    project_id,
+                    recipients=[
+                        {"email": "a@example.com"},
+                        {"email": "suppressed@example.com"},
+                    ],
+                ),
+            )
+        batch_id = response.json()["batch_id"]
+
+        results = broadcast_client.get(
+            f"/broadcasts/{batch_id}/recipients",
+            params={"project_id": str(project_id)},
+        )
+        items = {item["email"]: item for item in results.json()["items"]}
+
+        assert items["a@example.com"]["suppressed"] is False
+        assert items["a@example.com"]["prepared"] is True
+        assert items["a@example.com"]["email_id"] is not None
+
+        # Suppressed at accept time: excluded from the prepare dispatch
+        # entirely, so "prepared" never flips — the row still surfaces here
+        # so a caller can distinguish "suppressed" from "not yet prepared".
+        assert items["suppressed@example.com"]["suppressed"] is True
+        assert items["suppressed@example.com"]["email_id"] is None
+        assert items["suppressed@example.com"]["email_status"] is None
+
+    def test_fully_suppressed_batch_has_recipient_row_with_no_email(
+        self, broadcast_client, real_db
+    ):
+        from datetime import datetime, timezone
+
+        from app.models.email_suppression import EmailSuppression
+
+        project_id = uuid4()
+        real_db.add(
+            EmailSuppression(
+                project_id=project_id,
+                email="suppressed@example.com",
+                unsubscribed_at=datetime.now(timezone.utc),
+                source="test",
+            )
+        )
+        real_db.commit()
+
+        response = broadcast_client.post(
+            "/broadcasts/send",
+            json=_payload(project_id, recipients=[{"email": "suppressed@example.com"}]),
+        )
+        batch_id = response.json()["batch_id"]
+
+        results = broadcast_client.get(
+            f"/broadcasts/{batch_id}/recipients",
+            params={"project_id": str(project_id)},
+        )
+        data = results.json()
+        assert data["total"] == 1
+        assert data["items"][0]["suppressed"] is True
+        assert data["items"][0]["email_id"] is None
+        assert data["items"][0]["email_status"] is None
+
+    def test_missing_batch_returns_404(self, broadcast_client):
+        response = broadcast_client.get(f"/broadcasts/{uuid4()}/recipients")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_stable_traversal_across_pages(self, broadcast_client):
+        project_id = uuid4()
+        recipients = [{"email": f"user{i}@example.com"} for i in range(5)]
+        with patched_providers():
+            send_response = broadcast_client.post(
+                "/broadcasts/send",
+                json=_payload(project_id, recipients=recipients),
+            )
+        batch_id = send_response.json()["batch_id"]
+
+        page1 = broadcast_client.get(
+            f"/broadcasts/{batch_id}/recipients",
+            params={"project_id": str(project_id), "page": 1, "size": 2},
+        ).json()
+        page2 = broadcast_client.get(
+            f"/broadcasts/{batch_id}/recipients",
+            params={"project_id": str(project_id), "page": 2, "size": 2},
+        ).json()
+        page3 = broadcast_client.get(
+            f"/broadcasts/{batch_id}/recipients",
+            params={"project_id": str(project_id), "page": 3, "size": 2},
+        ).json()
+
+        all_emails = [
+            item["email"] for page in (page1, page2, page3) for item in page["items"]
+        ]
+        assert len(all_emails) == len(set(all_emails)) == 5
+        assert page1["total"] == 5
+
+    def test_authorizes_against_actual_project_not_caller_supplied(
+        self, broadcast_client
+    ):
+        real_project_id = uuid4()
+        someone_elses_project_id = uuid4()
+        with patched_providers():
+            send_response = broadcast_client.post(
+                "/broadcasts/send", json=_payload(real_project_id)
+            )
+        batch_id = send_response.json()["batch_id"]
+
+        captured_domains = []
+
+        def fake_authorize(*, resource, action, domain_resolver):
+            async def dependency(request):
+                captured_domains.append(await domain_resolver(request))
+                return True
+
+            return dependency
+
+        with patch("app.routers.broadcast.authorize", side_effect=fake_authorize):
+            response = broadcast_client.get(
+                f"/broadcasts/{batch_id}/recipients",
+                params={"project_id": str(someone_elses_project_id)},
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert captured_domains == [str(real_project_id)]

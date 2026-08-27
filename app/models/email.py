@@ -23,6 +23,7 @@ class Email(Base, TimestampMixin, SoftDeleteMixin):
     status = Column(String, nullable=False)
     sent_at = Column(DateTime, nullable=True)  # when the email was sent to the provider
     opened_at = Column(DateTime, nullable=True)  # when the email was first opened
+    clicked_at = Column(DateTime, nullable=True)  # when a link was first clicked
     provider = Column(String, nullable=False)
     provider_message_id = Column(String, nullable=True)
     project_id = Column(UUID(as_uuid=True), nullable=True)

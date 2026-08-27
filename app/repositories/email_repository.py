@@ -231,6 +231,37 @@ class EmailRepository(SoftDeleteRepository[Email]):
             self.db.refresh(db_email)
         return db_email
 
+    def set_first_opened_at(self, email_id: UUID, occurred_at: datetime) -> bool:
+        """
+        Atomically set opened_at only if it is still null.
+
+        Uses a conditional UPDATE rather than read-then-write so concurrent
+        or duplicate "opened" webhook deliveries for the same email can't
+        both believe they were first: Postgres serializes the two UPDATEs
+        via the row lock, and only the one that finds opened_at IS NULL at
+        commit time actually changes a row.
+
+        Returns True iff this call performed the first-occurrence transition.
+        """
+        updated = (
+            self.db.query(Email)
+            .filter(Email.id == email_id, Email.opened_at.is_(None))
+            .update({"opened_at": occurred_at}, synchronize_session=False)
+        )
+        self.db.commit()
+        return updated > 0
+
+    def set_first_clicked_at(self, email_id: UUID, occurred_at: datetime) -> bool:
+        """Same atomic first-occurrence semantics as set_first_opened_at, for
+        clicked_at."""
+        updated = (
+            self.db.query(Email)
+            .filter(Email.id == email_id, Email.clicked_at.is_(None))
+            .update({"clicked_at": occurred_at}, synchronize_session=False)
+        )
+        self.db.commit()
+        return updated > 0
+
     def delete_email(self, email_id: UUID) -> bool:
         """
         Soft delete an email.

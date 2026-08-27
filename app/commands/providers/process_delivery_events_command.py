@@ -122,17 +122,31 @@ class ProcessDeliveryEventsCommand:
                 f"Email not found for provider_message_id: {event.provider_message_id}"
             )
 
-        new_status = self.lifecycle.record_webhook_event(
+        outcome = self.lifecycle.record_webhook_event(
             email=email,
             event_type=event.type,
             occurred_at=event.occurred_at,
             raw_payload=event.raw_payload,
         )
 
-        if new_status is not None and email.batch_id is not None:
+        needs_batch_update = (
+            outcome.status_changed_to is not None
+            or outcome.first_opened
+            or outcome.first_clicked
+        )
+        if needs_batch_update and email.batch_id is not None:
             batch = self.broadcast_repo.get_batch_by_batch_id(email.batch_id)
             if batch is not None:
-                self.broadcast_repo.increment_delivery_counter(batch.id, new_status)
+                if outcome.status_changed_to is not None:
+                    self.broadcast_repo.increment_delivery_counter(
+                        batch.id, outcome.status_changed_to
+                    )
+                if outcome.first_opened:
+                    self.broadcast_repo.increment_engagement_counter(batch.id, "opened")
+                if outcome.first_clicked:
+                    self.broadcast_repo.increment_engagement_counter(
+                        batch.id, "clicked"
+                    )
 
         if event.type in _SUBSCRIPTION_CHANGE_EVENT_TYPES:
             HandleSubscriptionChangeCommand(self.db).execute(

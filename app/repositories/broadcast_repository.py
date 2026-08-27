@@ -104,10 +104,21 @@ class BroadcastRepository:
                 attributes=recipient.attributes,
                 suppressed=str(recipient.email) in suppressed_emails,
                 prepared=False,
+                client_reference_id=recipient.client_reference_id,
             )
             for recipient in recipients
         ]
         self.db.add_all(rows)
+        self.db.commit()
+
+    def link_recipient_to_email(self, recipient_id: UUID, email_id: UUID) -> None:
+        """Populate the nullable, unique recipient -> email relationship.
+        Called by the prepare stage right after it creates the Email for a
+        successfully-rendered recipient; suppressed/failed recipients never
+        get this call."""
+        self.db.query(BroadcastRecipient).filter(
+            BroadcastRecipient.id == recipient_id
+        ).update({"email_id": email_id}, synchronize_session=False)
         self.db.commit()
 
     def get_unprepared_recipients(
@@ -180,18 +191,39 @@ class BroadcastRepository:
     # their BroadcastBatch column. Each status is reachable at most once per
     # email, so a plain atomic increment can't double-count as long as the
     # caller only increments on an actual status transition (see
-    # EmailLifecycleService.record_webhook_event's return value).
+    # EmailLifecycleService.record_webhook_event's return value). opened/
+    # clicked are NOT status-driven — see increment_engagement_counter.
     _DELIVERY_COUNTER_COLUMNS = {
         EmailStatus.DELIVERED: BroadcastBatch.delivered_count,
         EmailStatus.BOUNCED: BroadcastBatch.bounced_count,
         EmailStatus.COMPLAINED: BroadcastBatch.complained_count,
-        EmailStatus.OPENED: BroadcastBatch.opened_count,
     }
 
     def increment_delivery_counter(self, batch_pk: UUID, status: str) -> None:
         """Atomic SQL increment of the rollup column for `status`, if one
         exists. No-op for statuses without a tracked counter."""
-        column = self._DELIVERY_COUNTER_COLUMNS.get(status)
+        self._increment_counter(batch_pk, self._DELIVERY_COUNTER_COLUMNS.get(status))
+
+    # Maps a first-occurrence engagement kind (see
+    # EmailLifecycleService.WebhookOutcome.first_opened/first_clicked) to its
+    # BroadcastBatch column. Driven by the atomic first-occurrence outcome,
+    # not by Email.status, so an out-of-order click-before-open webhook
+    # sequence still counts both exactly once each.
+    _ENGAGEMENT_COUNTER_COLUMNS = {
+        "opened": BroadcastBatch.opened_count,
+        "clicked": BroadcastBatch.clicked_count,
+    }
+
+    def increment_engagement_counter(self, batch_pk: UUID, engagement: str) -> None:
+        """Atomic SQL increment of the rollup column for `engagement`
+        ("opened" or "clicked"), if one exists."""
+        self._increment_counter(
+            batch_pk, self._ENGAGEMENT_COUNTER_COLUMNS.get(engagement)
+        )
+
+    def _increment_counter(self, batch_pk: UUID, column) -> None:
+        """Shared atomic SQL increment used by both counter families above.
+        No-op when `column` is None (an untracked status/engagement kind)."""
         if column is None:
             return
         self.db.query(BroadcastBatch).filter(BroadcastBatch.id == batch_pk).update(
