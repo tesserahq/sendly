@@ -727,20 +727,21 @@ idna = ">=2.0.0"
 
 [[package]]
 name = "faker"
-version = "40.11.0"
+version = "40.39.0"
 description = "Faker is a Python package that generates fake data for you."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "faker-40.11.0-py3-none-any.whl", hash = "sha256:0e9816c950528d2a37d74863f3ef389ea9a3a936cbcde0b11b8499942e25bf90"},
-    {file = "faker-40.11.0.tar.gz", hash = "sha256:7c419299103b13126bd02ec14bd2b47b946edb5a5eedf305e66a193b25f9a734"},
+    {file = "faker-40.39.0-py3-none-any.whl", hash = "sha256:c4c7ec2cddfaf602c5a8a2c960614946aa8c161250bd9d49a8846cd24d1ef028"},
+    {file = "faker-40.39.0.tar.gz", hash = "sha256:52799ad96fcf92aab2fc96a9e03869bbf1a634300f7cd91c38dbfd51f639f6fa"},
 ]
 
 [package.dependencies]
 tzdata = {version = "*", markers = "platform_system == \"Windows\""}
 
 [package.extras]
+image = ["pillow"]
 tzdata = ["tzdata"]
 
 [[package]]
@@ -3239,4 +3240,4 @@ dev = ["pytest", "setuptools"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "2b93ae01dfd5634e442a7f20c58747f3eeabf0f47df3173d9cbe4c02263fa106"
+content-hash = "fffafd2cc1a40452cbdc9e46282f62a1836d9404e536225add918dec69abdf6a"
