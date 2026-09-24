@@ -5,14 +5,26 @@ on:
     branches: [main]
     types:
       - completed
+
+permissions:
+  contents: read
+
 jobs:
   push_to_registry:
-    if: github.event.workflow_run.conclusion == 'success'
+    # Only a successful push to this repository's main may publish and promote.
+    # branches: [main] alone also matches fork pull requests from a branch
+    # named main, which must never run with these secrets.
+    if: >-
+      github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_repository.full_name == github.repository
     name: Push Docker image to Docker Hub
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the repo
+      - name: Check out the tested source revision
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
@@ -20,16 +32,88 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract metadata (tags, labels) for Docker
+      - name: Extract metadata for Docker
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: mustela/sendly
-      - name: Build and push Docker image
+          flavor: latest=false
+          tags: |
+            type=raw,value=main
+            type=raw,value=sha-${{ github.event.workflow_run.head_sha }}
+
+      - name: Build Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
-          push: true
+          push: false
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Smoke test the built image
+        run: |
+          docker run --rm "${{ fromJSON(steps.meta.outputs.json).tags[0] }}" python -c "import app.main"
+
+      - name: Push the tested image
+        run: |
+          printf '%s\n' "${{ steps.meta.outputs.tags }}" | while IFS= read -r tag; do
+            [ -n "$tag" ] && docker push "$tag"
+          done
+
+      - name: Resolve immutable image digest
+        id: image
+        env:
+          IMAGE_TAG: mustela/sendly:sha-${{ github.event.workflow_run.head_sha }}
+        run: |
+          digest=$(docker buildx imagetools inspect "$IMAGE_TAG" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          case "$digest" in
+            sha256:????????????????????????????????????????????????????????????????) ;;
+            *) echo "registry returned an invalid digest" >&2; exit 1 ;;
+          esac
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+
+      - name: Check out infrastructure repository
+        uses: actions/checkout@v7
+        with:
+          repository: mylinden-tech/infra
+          ref: main
+          path: infra
+          token: ${{ secrets.INFRA_REPO_TOKEN }}
+
+      - name: Open production image update pull request
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          cd infra
+          ./scripts/update-image-digest.sh \
+            production/apps/sendly-api/Dockerfile \
+            mustela/sendly \
+            "$IMAGE_DIGEST"
+          ./scripts/update-image-digest.sh \
+            production/stacks/sendly/compose.yaml \
+            mustela/sendly \
+            "$IMAGE_DIGEST"
+          if git diff --quiet; then
+            echo "Production already references $IMAGE_DIGEST"
+            exit 0
+          fi
+          branch="deploy/sendly-api-$RELEASE_SHA"
+          short_sha=$(printf '%s' "$RELEASE_SHA" | cut -c1-12)
+          git config user.name "sendly-release-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add \
+            production/apps/sendly-api/Dockerfile \
+            production/stacks/sendly/compose.yaml
+          git commit -m "Deploy Sendly API $short_sha"
+          git push origin "$branch"
+          gh pr create \
+            --repo mylinden-tech/infra \
+            --head "$branch" \
+            --base main \
+            --title "Deploy Sendly API $short_sha" \
+            --body "Promotes the tested Sendly image from source commit \`$RELEASE_SHA\` as immutable digest \`$IMAGE_DIGEST\`. Merging this PR triggers the protected rolling API and background deployments."
