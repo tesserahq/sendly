@@ -136,7 +136,7 @@ def db(engine):
     transaction = connection.begin()
 
     # bind an individual Session to the connection
-    Session = sessionmaker(bind=connection)
+    Session = sessionmaker(bind=connection, join_transaction_mode="create_savepoint")
     session = Session()
 
     yield session
@@ -219,11 +219,13 @@ def create_client_fixture(user_fixture_name):
         # Get the user from the specified fixture
         test_user = request.getfixturevalue(user_fixture_name)
 
-        def override_get_db():
+        async def override_get_db():
             try:
                 yield db
-            finally:
-                pass  # Don't close the session here, it's handled by the db fixture
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
 
         # Create app with testing mode ON (no auth middleware)
         logger.debug("Creating app with testing mode ON")
@@ -268,11 +270,13 @@ def create_real_db_client_fixture(user_fixture_name):
     def client_fixture(real_db, request):
         test_user = request.getfixturevalue(user_fixture_name)
 
-        def override_get_db():
+        async def override_get_db():
             try:
                 yield real_db
-            finally:
-                pass
+                real_db.commit()
+            except Exception:
+                real_db.rollback()
+                raise
 
         app = create_app(testing=True, auth_middleware=MockAuthenticationMiddleware)
         app.state.test_user = test_user

@@ -9,12 +9,13 @@ this command runs.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 from tessera_sdk.infra.events import NatsEventPublisher
 
+from app.db import on_commit
 from app.events.email_events import build_email_unsubscribed_event
 from app.models.email import Email
 from app.repositories.suppression_repository import SuppressionRepository
@@ -24,13 +25,13 @@ logger = logging.getLogger(__name__)
 
 class HandleSubscriptionChangeCommand:
     def __init__(
-        self, db: Session, nats_publisher: Optional[NatsEventPublisher] = None
+        self, db: Session, nats_publisher: NatsEventPublisher | None = None
     ):
         self.db = db
         self.suppression_repo = SuppressionRepository(db)
         self.nats_publisher = nats_publisher or NatsEventPublisher()
 
-    def execute(self, *, email: Optional[Email], raw_payload: Dict[str, Any]) -> None:
+    def execute(self, *, email: Email | None, raw_payload: dict[str, Any]) -> None:
         message_id = raw_payload.get("MessageID") or raw_payload.get("MessageId")
 
         if email is None or not message_id:
@@ -59,15 +60,17 @@ class HandleSubscriptionChangeCommand:
             # downstream; other suppression sources (e.g. a manual/admin
             # suppression in Postmark) still get suppressed, silently.
             if origin == "Recipient":
-                self._publish_unsubscribed(email)
+                event = build_email_unsubscribed_event(email)
+                on_commit(
+                    lambda: self._publish_unsubscribed(event), session=self.db
+                )
         else:
             self.suppression_repo.remove_suppression(
                 project_id=email.project_id,
                 email=email.to_email,
             )
 
-    def _publish_unsubscribed(self, email: Email) -> None:
-        event = build_email_unsubscribed_event(email)
+    def _publish_unsubscribed(self, event) -> None:
         try:
             self.nats_publisher.publish_sync(event, event.event_type)
         except Exception:
@@ -76,8 +79,8 @@ class HandleSubscriptionChangeCommand:
     @staticmethod
     def _parse_changed_at(value: Any) -> datetime:
         if not value:
-            return datetime.now(timezone.utc)
+            return datetime.now(UTC)
         try:
             return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         except Exception:
-            return datetime.now(timezone.utc)
+            return datetime.now(UTC)

@@ -1,7 +1,9 @@
-from typing import List, Optional, TypeVar, Generic, Type
+from datetime import UTC, datetime
+from typing import Generic, TypeVar
 from uuid import UUID
-from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
+
 from app.db import Base
 
 # Generic type for SQLAlchemy models that have id and deleted_at fields
@@ -16,7 +18,7 @@ class SoftDeleteRepository(Generic[T]):
     without duplicating code.
     """
 
-    def __init__(self, db: Session, model_class: Type[T]):
+    def __init__(self, db: Session, model_class: type[T]):
         """
         Initialize the soft delete repository.
 
@@ -44,12 +46,12 @@ class SoftDeleteRepository(Generic[T]):
         )
 
         if record:
-            record.deleted_at = datetime.now(timezone.utc)
-            self.db.commit()
+            record.deleted_at = datetime.now(UTC)
+            self.db.flush()
             return True
         return False
 
-    def delete_records(self, record_ids: List[UUID]) -> bool:
+    def delete_records(self, record_ids: list[UUID]) -> bool:
         """
         Soft delete multiple records by setting deleted_at timestamp.
         """
@@ -59,8 +61,8 @@ class SoftDeleteRepository(Generic[T]):
             .all()
         )
         for record in records:
-            record.deleted_at = datetime.now(timezone.utc)
-            self.db.commit()
+            record.deleted_at = datetime.now(UTC)
+        self.db.flush()
         return True
 
     def restore_record(self, record_id: UUID) -> bool:
@@ -82,7 +84,7 @@ class SoftDeleteRepository(Generic[T]):
 
         if record:
             record.deleted_at = None
-            self.db.commit()
+            self.db.flush()
             return True
         return False
 
@@ -104,11 +106,11 @@ class SoftDeleteRepository(Generic[T]):
 
         if record:
             self.db.delete(record)
-            self.db.commit()
+            self.db.flush()
             return True
         return False
 
-    def get_deleted_records(self, skip: int = 0, limit: int = 100) -> List[T]:
+    def get_deleted_records(self, skip: int = 0, limit: int = 100) -> list[T]:
         """
         Get all soft-deleted records.
 
@@ -128,7 +130,7 @@ class SoftDeleteRepository(Generic[T]):
             .all()
         )
 
-    def get_deleted_record(self, record_id: UUID) -> Optional[T]:
+    def get_deleted_record(self, record_id: UUID) -> T | None:
         """
         Get a single soft-deleted record by ID.
 
@@ -146,7 +148,7 @@ class SoftDeleteRepository(Generic[T]):
             .first()
         )
 
-    def get_records_deleted_after(self, date: datetime) -> List[T]:
+    def get_records_deleted_after(self, date: datetime) -> list[T]:
         """
         Get records deleted after a specific date.
 
@@ -163,7 +165,7 @@ class SoftDeleteRepository(Generic[T]):
             .all()
         )
 
-    def get_record_any_status(self, record_id: UUID) -> Optional[T]:
+    def get_record_any_status(self, record_id: UUID) -> T | None:
         """
         Get a record regardless of deletion status (deleted or not).
 

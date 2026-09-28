@@ -547,7 +547,11 @@ class TestFirstOccurrenceConcurrency:
             session = Session()
             try:
                 repo = EmailRepository(session)
-                return repo.set_first_clicked_at(email_id, datetime.now(timezone.utc))
+                transitioned = repo.set_first_clicked_at(
+                    email_id, datetime.now(timezone.utc)
+                )
+                session.commit()
+                return transitioned
             finally:
                 session.close()
 

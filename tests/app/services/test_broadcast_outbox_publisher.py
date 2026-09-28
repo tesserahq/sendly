@@ -23,6 +23,10 @@ class TestDispatch:
             patch(
                 "app.tasks.send_broadcast_chunk_task.send_broadcast_chunk_task"
             ) as mock_task,
+            patch(
+                "app.services.broadcast_outbox_publisher.on_commit",
+                side_effect=lambda callback, session: callback(),
+            ),
         ):
             mock_settings.return_value.broadcast_chunk_size = 2
             dispatched = publisher.dispatch(email_ids)
@@ -61,6 +65,10 @@ class TestRunRecoverySweep:
             patch(
                 "app.tasks.send_broadcast_chunk_task.send_broadcast_chunk_task"
             ) as mock_task,
+            patch(
+                "app.services.broadcast_outbox_publisher.on_commit",
+                side_effect=lambda callback, session: callback(),
+            ),
         ):
             mock_settings.return_value.broadcast_chunk_size = 100
             dispatched = publisher.run_recovery_sweep()

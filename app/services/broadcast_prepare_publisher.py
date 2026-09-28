@@ -11,13 +11,13 @@ Two triggers, same shape the outbox publisher uses one stage later:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import List
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.db import on_commit
 from app.repositories.broadcast_repository import BroadcastRepository
 from app.utils.chunking import chunked
 
@@ -37,8 +37,13 @@ class BroadcastPreparePublisher:
 
         dispatched = 0
         for chunk in chunked(recipients, chunk_size):
-            ids: List[str] = [str(recipient.id) for recipient in chunk]
-            prepare_broadcast_chunk_task.delay(str(broadcast_batch_id), ids)
+            ids: list[str] = [str(recipient.id) for recipient in chunk]
+            on_commit(
+                lambda ids=ids: prepare_broadcast_chunk_task.delay(
+                    str(broadcast_batch_id), ids
+                ),
+                session=self.db,
+            )
             dispatched += len(ids)
 
         if dispatched == 0:
@@ -51,7 +56,7 @@ class BroadcastPreparePublisher:
         return dispatched
 
     def run_recovery_sweep(self) -> int:
-        cutoff = datetime.now(timezone.utc) - GRACE_PERIOD
+        cutoff = datetime.now(UTC) - GRACE_PERIOD
         stale_batch_ids = self.repo.get_stale_unprepared_batch_ids(cutoff)
 
         dispatched = 0

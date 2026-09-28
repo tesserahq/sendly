@@ -16,13 +16,13 @@ chunk.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import List
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.db import on_commit
 from app.repositories.email_send_outbox_repository import EmailSendOutboxRepository
 from app.utils.chunking import chunked
 
@@ -34,18 +34,22 @@ class BroadcastOutboxPublisher:
         self.db = db
         self.repo = EmailSendOutboxRepository(db)
 
-    def dispatch(self, email_ids: List[UUID]) -> int:
+    def dispatch(self, email_ids: list[UUID]) -> int:
         from app.tasks.send_broadcast_chunk_task import send_broadcast_chunk_task
 
         chunk_size = get_settings().broadcast_chunk_size
         dispatched = 0
         for chunk in chunked(email_ids, chunk_size):
-            send_broadcast_chunk_task.delay([str(email_id) for email_id in chunk])
+            ids = [str(email_id) for email_id in chunk]
+            on_commit(
+                lambda ids=ids: send_broadcast_chunk_task.delay(ids),
+                session=self.db,
+            )
             dispatched += len(chunk)
         return dispatched
 
     def run_recovery_sweep(self) -> int:
-        cutoff = datetime.now(timezone.utc) - GRACE_PERIOD
+        cutoff = datetime.now(UTC) - GRACE_PERIOD
         stale_entries = self.repo.get_pending_older_than_with_batch(cutoff)
 
         by_batch: dict = defaultdict(list)

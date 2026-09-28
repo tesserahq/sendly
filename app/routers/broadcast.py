@@ -6,7 +6,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import paginate
-from sqlalchemy.orm import Session
 from tessera_sdk.server.dependencies.authorization import authorize
 
 from app.auth.rbac import (
@@ -16,7 +15,7 @@ from app.auth.rbac import (
     fixed_domain_resolver,
 )
 from app.commands.send_broadcast_command import SendBroadcastCommand
-from app.db import get_db
+from app.db import DbSession
 from app.models.broadcast_batch import BroadcastBatch
 from app.repositories.broadcast_repository import BroadcastRepository
 from app.schemas.broadcast import (
@@ -64,7 +63,7 @@ rbac = build_rbac_dependencies(
 )
 def send_broadcast(
     request: BroadcastCreateRequest,
-    db: Session = Depends(get_db),
+    db: DbSession,
     _authorized: bool = Depends(rbac["create"]),
 ) -> BroadcastSendResponse:
     """Fan a single piece of content out to a list of recipients."""
@@ -80,11 +79,11 @@ def send_broadcast(
 
 @router.get("", response_model=Page[BroadcastBatchSummary])
 def list_broadcasts(
+    db: DbSession,
     project_id: Annotated[
         Optional[UUID],
         Query(description="Project ID to filter broadcast batches by"),
     ] = None,
-    db: Session = Depends(get_db),
     params: Params = Depends(),
     _authorized: bool = Depends(rbac["read"]),
 ) -> Page[BroadcastBatchSummary]:
@@ -123,7 +122,7 @@ async def _authorize_batch_read(batch: BroadcastBatch, request: Request) -> None
 async def get_broadcast(
     batch_id: str,
     request: Request,
-    db: Session = Depends(get_db),
+    db: DbSession,
 ) -> BroadcastStatusResponse:
     """Accept-time counts plus prepare/send progress for one batch, read
     from the denormalized prepared_count/finished columns."""
@@ -152,7 +151,7 @@ async def get_broadcast(
 async def list_broadcast_recipients(
     batch_id: str,
     request: Request,
-    db: Session = Depends(get_db),
+    db: DbSession,
     params: Params = Depends(),
 ) -> Page[BroadcastRecipientResult]:
     """Paginated per-recipient results for one batch: submitted identity,

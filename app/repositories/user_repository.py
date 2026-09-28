@@ -1,11 +1,12 @@
-from typing import List, Optional
+from datetime import UTC, datetime
 from uuid import UUID
-from sqlalchemy.orm import Session
-from app.models.user import User
-from app.schemas.user import UserCreate, UserUpdate, UserOnboard
-from datetime import datetime, timezone
-from app.repositories.soft_delete_repository import SoftDeleteRepository
+
 from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from app.models.user import User
+from app.repositories.soft_delete_repository import SoftDeleteRepository
+from app.schemas.user import UserCreate, UserOnboard, UserUpdate
 from app.utils.db.filtering import apply_filters
 
 
@@ -13,13 +14,13 @@ class UserRepository(SoftDeleteRepository[User]):
     def __init__(self, db: Session):
         super().__init__(db, User)
 
-    def get_user(self, user_id: UUID) -> Optional[User]:
+    def get_user(self, user_id: UUID) -> User | None:
         return self.db.query(User).filter(User.id == user_id).first()
 
-    def get_user_by_email(self, email: str) -> Optional[User]:
+    def get_user_by_email(self, email: str) -> User | None:
         return self.db.query(User).filter(User.email == email).first()
 
-    def get_user_by_external_id(self, external_id: str) -> Optional[User]:
+    def get_user_by_external_id(self, external_id: str) -> User | None:
         return self.db.query(User).filter(User.external_id == external_id).first()
 
     def get_user_by_id_or_external_id(self, id: str) -> User | None:
@@ -34,30 +35,30 @@ class UserRepository(SoftDeleteRepository[User]):
             # Not a valid UUID, only match on external_id
             return self.db.query(User).filter(User.external_id == str(id)).first()
 
-    def get_users(self, skip: int = 0, limit: int = 100) -> List[User]:
+    def get_users(self, skip: int = 0, limit: int = 100) -> list[User]:
         return self.db.query(User).offset(skip).limit(limit).all()
 
     def create_user(self, user: UserCreate) -> User:
         db_user = User(**user.model_dump())
         self.db.add(db_user)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(db_user)
         return db_user
 
     def onboard_user(self, user: UserOnboard) -> User:
         db_user = User(**user.model_dump())
         self.db.add(db_user)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(db_user)
         return db_user
 
-    def update_user(self, user_id: UUID, user: UserUpdate) -> Optional[User]:
+    def update_user(self, user_id: UUID, user: UserUpdate) -> User | None:
         db_user = self.db.query(User).filter(User.id == user_id).first()
         if db_user:
             update_data = user.model_dump(exclude_unset=True)
             for key, value in update_data.items():
                 setattr(db_user, key, value)
-            self.db.commit()
+            self.db.flush()
             self.db.refresh(db_user)
         return db_user
 
@@ -65,16 +66,16 @@ class UserRepository(SoftDeleteRepository[User]):
         """Soft delete a user."""
         return self.delete_record(user_id)
 
-    def verify_user(self, user_id: UUID) -> Optional[User]:
+    def verify_user(self, user_id: UUID) -> User | None:
         db_user = self.db.query(User).filter(User.id == user_id).first()
         if db_user:
             db_user.verified = True
-            db_user.verified_at = datetime.now(timezone.utc)
-            self.db.commit()
+            db_user.verified_at = datetime.now(UTC)
+            self.db.flush()
             self.db.refresh(db_user)
         return db_user
 
-    def search(self, filters: dict) -> List[User]:
+    def search(self, filters: dict) -> list[User]:
         """
         Search users based on dynamic filter criteria.
 

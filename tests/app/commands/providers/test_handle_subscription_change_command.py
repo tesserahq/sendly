@@ -3,7 +3,7 @@ and NatsEventPublisher — no DB, no NATS."""
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from app.commands.providers.handle_subscription_change_command import (
@@ -42,15 +42,19 @@ class TestRecipientUnsubscribe:
         command, suppression_repo, nats_publisher = _make_command()
         email = _make_email()
 
-        command.execute(
-            email=email,
-            raw_payload={
-                "MessageID": "pm-123",
-                "SuppressSending": True,
-                "Origin": "Recipient",
-                "ChangedAt": "2026-01-01T00:00:00Z",
-            },
-        )
+        with patch(
+            "app.commands.providers.handle_subscription_change_command.on_commit",
+            side_effect=lambda callback, session: callback(),
+        ):
+            command.execute(
+                email=email,
+                raw_payload={
+                    "MessageID": "pm-123",
+                    "SuppressSending": True,
+                    "Origin": "Recipient",
+                    "ChangedAt": "2026-01-01T00:00:00Z",
+                },
+            )
 
         suppression_repo.create_or_update_suppression.assert_called_once()
         call_kwargs = suppression_repo.create_or_update_suppression.call_args.kwargs

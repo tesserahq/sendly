@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import List, Set
 from uuid import UUID
+
 from sqlalchemy.orm import Session
 
 from app.models.email_suppression import EmailSuppression
@@ -24,7 +24,7 @@ class SuppressionRepository(SoftDeleteRepository[EmailSuppression]):
             is not None
         )
 
-    def is_suppressed_bulk(self, project_id: UUID, emails: List[str]) -> Set[str]:
+    def is_suppressed_bulk(self, project_id: UUID, emails: list[str]) -> set[str]:
         """One query, not N: return the subset of `emails` already suppressed."""
         if not emails:
             return set()
@@ -38,7 +38,7 @@ class SuppressionRepository(SoftDeleteRepository[EmailSuppression]):
         )
         return {row[0] for row in rows}
 
-    def is_suppressed_bulk_any_project(self, emails: List[str]) -> Set[str]:
+    def is_suppressed_bulk_any_project(self, emails: list[str]) -> set[str]:
         """Like is_suppressed_bulk, but for global (no project_id) broadcasts:
         a recipient suppressed in ANY project is skipped, since there's no
         single project's opt-out list to check against."""
@@ -70,7 +70,7 @@ class SuppressionRepository(SoftDeleteRepository[EmailSuppression]):
         if existing:
             existing.unsubscribed_at = unsubscribed_at
             existing.source = source
-            self.db.commit()
+            self.db.flush()
             self.db.refresh(existing)
             return existing
 
@@ -81,7 +81,7 @@ class SuppressionRepository(SoftDeleteRepository[EmailSuppression]):
             source=source,
         )
         self.db.add(suppression)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(suppression)
         return suppression
 
@@ -97,5 +97,5 @@ class SuppressionRepository(SoftDeleteRepository[EmailSuppression]):
         if not existing:
             return False
         self.db.delete(existing)
-        self.db.commit()
+        self.db.flush()
         return True

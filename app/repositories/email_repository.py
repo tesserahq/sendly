@@ -1,16 +1,17 @@
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID
+
 from sqlalchemy.orm import Session, selectinload
+
 from app.models.email import Email
 from app.models.email_event import EmailEvent
+from app.repositories.soft_delete_repository import SoftDeleteRepository
 from app.schemas.email import (
     EmailCreate,
-    EmailUpdate,
     EmailEventCreate,
     EmailEventUpdate,
+    EmailUpdate,
 )
-from app.repositories.soft_delete_repository import SoftDeleteRepository
 from app.utils.db.filtering import apply_filters
 
 
@@ -28,7 +29,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
 
     # ==================== Email Methods ====================
 
-    def get_email(self, email_id: UUID) -> Optional[Email]:
+    def get_email(self, email_id: UUID) -> Email | None:
         """
         Get a single email by ID.
 
@@ -40,7 +41,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
         """
         return self.db.query(Email).filter(Email.id == email_id).first()
 
-    def get_email_with_events(self, email_id: UUID) -> Optional[Email]:
+    def get_email_with_events(self, email_id: UUID) -> Email | None:
         """
         Get a single email by ID with its events eager-loaded.
 
@@ -57,7 +58,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
             .first()
         )
 
-    def get_emails(self, skip: int = 0, limit: int = 100) -> List[Email]:
+    def get_emails(self, skip: int = 0, limit: int = 100) -> list[Email]:
         """
         Get all emails with pagination.
 
@@ -78,7 +79,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
 
     def get_emails_by_project(
         self, project_id: UUID, skip: int = 0, limit: int = 100
-    ) -> List[Email]:
+    ) -> list[Email]:
         """
         Get all emails for a specific project.
 
@@ -117,7 +118,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
 
     def get_emails_by_provider(
         self, provider: str, skip: int = 0, limit: int = 100
-    ) -> List[Email]:
+    ) -> list[Email]:
         """
         Get all emails sent through a specific provider.
 
@@ -139,7 +140,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
 
     def get_emails_by_status(
         self, status: str, skip: int = 0, limit: int = 100
-    ) -> List[Email]:
+    ) -> list[Email]:
         """
         Get all emails with a specific status.
 
@@ -159,7 +160,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
             .all()
         )
 
-    def get_emails_by_ids(self, email_ids: List[UUID]) -> List[Email]:
+    def get_emails_by_ids(self, email_ids: list[UUID]) -> list[Email]:
         """
         Get multiple emails by id in one query.
 
@@ -175,7 +176,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
 
     def get_email_by_provider_message_id(
         self, provider_message_id: str, provider: str
-    ) -> Optional[Email]:
+    ) -> Email | None:
         """
         Get an email by its provider message ID and provider.
 
@@ -207,11 +208,11 @@ class EmailRepository(SoftDeleteRepository[Email]):
         """
         db_email = Email(**email.model_dump())
         self.db.add(db_email)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(db_email)
         return db_email
 
-    def update_email(self, email_id: UUID, email: EmailUpdate) -> Optional[Email]:
+    def update_email(self, email_id: UUID, email: EmailUpdate) -> Email | None:
         """
         Update an existing email.
 
@@ -227,7 +228,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
             update_data = email.model_dump(exclude_unset=True)
             for key, value in update_data.items():
                 setattr(db_email, key, value)
-            self.db.commit()
+            self.db.flush()
             self.db.refresh(db_email)
         return db_email
 
@@ -248,7 +249,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
             .filter(Email.id == email_id, Email.opened_at.is_(None))
             .update({"opened_at": occurred_at}, synchronize_session=False)
         )
-        self.db.commit()
+        self.db.flush()
         return updated > 0
 
     def set_first_clicked_at(self, email_id: UUID, occurred_at: datetime) -> bool:
@@ -259,7 +260,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
             .filter(Email.id == email_id, Email.clicked_at.is_(None))
             .update({"clicked_at": occurred_at}, synchronize_session=False)
         )
-        self.db.commit()
+        self.db.flush()
         return updated > 0
 
     def delete_email(self, email_id: UUID) -> bool:
@@ -274,7 +275,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
         """
         return self.delete_record(email_id)
 
-    def search(self, filters: dict) -> List[Email]:
+    def search(self, filters: dict) -> list[Email]:
         """
         Search emails based on dynamic filter criteria.
 
@@ -292,7 +293,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
 
     # ==================== Email Event Methods ====================
 
-    def get_email_event(self, event_id: UUID) -> Optional[EmailEvent]:
+    def get_email_event(self, event_id: UUID) -> EmailEvent | None:
         """
         Get a single email event by ID.
 
@@ -306,7 +307,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
 
     def get_email_events(
         self, email_id: UUID, skip: int = 0, limit: int = 100
-    ) -> List[EmailEvent]:
+    ) -> list[EmailEvent]:
         """
         Get all events for a specific email.
 
@@ -328,7 +329,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
 
     def get_email_events_by_type(
         self, email_id: UUID, event_type: str, skip: int = 0, limit: int = 100
-    ) -> List[EmailEvent]:
+    ) -> list[EmailEvent]:
         """
         Get all events of a specific type for an email.
 
@@ -363,13 +364,13 @@ class EmailRepository(SoftDeleteRepository[Email]):
         """
         db_event = EmailEvent(**event.model_dump())
         self.db.add(db_event)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(db_event)
         return db_event
 
     def update_email_event(
         self, event_id: UUID, event: EmailEventUpdate
-    ) -> Optional[EmailEvent]:
+    ) -> EmailEvent | None:
         """
         Update an existing email event.
 
@@ -385,7 +386,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
             update_data = event.model_dump(exclude_unset=True)
             for key, value in update_data.items():
                 setattr(db_event, key, value)
-            self.db.commit()
+            self.db.flush()
             self.db.refresh(db_event)
         return db_event
 
@@ -402,11 +403,11 @@ class EmailRepository(SoftDeleteRepository[Email]):
         db_event = self.db.query(EmailEvent).filter(EmailEvent.id == event_id).first()
         if db_event:
             self.db.delete(db_event)
-            self.db.commit()
+            self.db.flush()
             return True
         return False
 
-    def search_email_events(self, filters: dict) -> List[EmailEvent]:
+    def search_email_events(self, filters: dict) -> list[EmailEvent]:
         """
         Search email events based on dynamic filter criteria.
 
@@ -430,14 +431,14 @@ class EmailRepository(SoftDeleteRepository[Email]):
         """Permanently delete a email from the database."""
         return self.hard_delete_record(email_id)
 
-    def get_deleted_emails(self, skip: int = 0, limit: int = 100) -> List[Email]:
+    def get_deleted_emails(self, skip: int = 0, limit: int = 100) -> list[Email]:
         """Get all soft-deleted emails."""
         return self.get_deleted_records(skip, limit)
 
-    def get_deleted_email(self, email_id: UUID) -> Optional[Email]:
+    def get_deleted_email(self, email_id: UUID) -> Email | None:
         """Get a single soft-deleted email by ID."""
         return self.get_deleted_record(email_id)
 
-    def get_emails_deleted_after(self, date: datetime) -> List[Email]:
+    def get_emails_deleted_after(self, date: datetime) -> list[Email]:
         """Get emails deleted after a specific date."""
         return self.get_records_deleted_after(date)

@@ -1,5 +1,6 @@
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -17,14 +18,14 @@ class BroadcastRepository:
 
     # ==================== BroadcastBatch ====================
 
-    def get_batch_by_id(self, batch_pk: UUID) -> Optional[BroadcastBatch]:
+    def get_batch_by_id(self, batch_pk: UUID) -> BroadcastBatch | None:
         return (
             self.db.query(BroadcastBatch).filter(BroadcastBatch.id == batch_pk).first()
         )
 
     def get_batch_by_idempotency_key(
-        self, project_id: Optional[UUID], idempotency_key: str
-    ) -> Optional[BroadcastBatch]:
+        self, project_id: UUID | None, idempotency_key: str
+    ) -> BroadcastBatch | None:
         # project_id = NULL never matches in SQL, so a global (no
         # project_id) broadcast needs an explicit IS NULL branch here or
         # idempotency replay would silently create a duplicate batch every
@@ -43,7 +44,7 @@ class BroadcastRepository:
             .first()
         )
 
-    def get_batches_query(self, project_id: Optional[UUID] = None):
+    def get_batches_query(self, project_id: UUID | None = None):
         """Query for broadcast batches, newest first, for use with
         fastapi-pagination's paginate()."""
         query = self.db.query(BroadcastBatch)
@@ -51,7 +52,7 @@ class BroadcastRepository:
             query = query.filter(BroadcastBatch.project_id == project_id)
         return query.order_by(BroadcastBatch.created_at.desc())
 
-    def get_batch_by_batch_id(self, batch_id: str) -> Optional[BroadcastBatch]:
+    def get_batch_by_batch_id(self, batch_id: str) -> BroadcastBatch | None:
         """batch_id is server-generated (a UUID) and globally unique — no
         project_id scoping needed, unlike idempotency_key (caller-chosen,
         legitimately reused across different projects/callers)."""
@@ -64,11 +65,11 @@ class BroadcastRepository:
     def create_batch(
         self,
         *,
-        project_id: Optional[UUID],
+        project_id: UUID | None,
         batch_id: str,
-        idempotency_key: Optional[str],
+        idempotency_key: str | None,
         request_fingerprint: str,
-        content_spec: Dict[str, Any],
+        content_spec: dict[str, Any],
         queued_count: int,
         suppressed_count: int,
     ) -> BroadcastBatch:
@@ -82,7 +83,7 @@ class BroadcastRepository:
             suppressed_count=suppressed_count,
         )
         self.db.add(batch)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(batch)
         return batch
 
@@ -93,7 +94,7 @@ class BroadcastRepository:
         *,
         broadcast_batch_id: UUID,
         recipients: Sequence[Any],
-        suppressed_emails: Set[str],
+        suppressed_emails: set[str],
     ) -> None:
         rows = [
             BroadcastRecipient(
@@ -109,7 +110,7 @@ class BroadcastRepository:
             for recipient in recipients
         ]
         self.db.add_all(rows)
-        self.db.commit()
+        self.db.flush()
 
     def link_recipient_to_email(self, recipient_id: UUID, email_id: UUID) -> None:
         """Populate the nullable, unique recipient -> email relationship.
@@ -119,11 +120,12 @@ class BroadcastRepository:
         self.db.query(BroadcastRecipient).filter(
             BroadcastRecipient.id == recipient_id
         ).update({"email_id": email_id}, synchronize_session=False)
-        self.db.commit()
+        self.db.flush()
+        self.db.expire_all()
 
     def get_unprepared_recipients(
-        self, broadcast_batch_id: UUID, limit: Optional[int] = None
-    ) -> List[BroadcastRecipient]:
+        self, broadcast_batch_id: UUID, limit: int | None = None
+    ) -> list[BroadcastRecipient]:
         """Unprepared, non-suppressed recipients for one batch (what prepare dispatches)."""
         query = self.db.query(BroadcastRecipient).filter(
             BroadcastRecipient.broadcast_batch_id == broadcast_batch_id,
@@ -134,7 +136,7 @@ class BroadcastRepository:
             query = query.limit(limit)
         return query.all()
 
-    def get_recipients_by_ids(self, ids: Sequence[UUID]) -> List[BroadcastRecipient]:
+    def get_recipients_by_ids(self, ids: Sequence[UUID]) -> list[BroadcastRecipient]:
         return (
             self.db.query(BroadcastRecipient)
             .filter(BroadcastRecipient.id.in_(ids))
@@ -147,7 +149,8 @@ class BroadcastRepository:
         self.db.query(BroadcastRecipient).filter(BroadcastRecipient.id.in_(ids)).update(
             {"prepared": True}, synchronize_session=False
         )
-        self.db.commit()
+        self.db.flush()
+        self.db.expire_all()
 
     def count_prepared(self, broadcast_batch_id: UUID) -> int:
         return (
@@ -168,7 +171,8 @@ class BroadcastRepository:
             {"prepared_count": BroadcastBatch.prepared_count + by},
             synchronize_session=False,
         )
-        self.db.commit()
+        self.db.flush()
+        self.db.expire_all()
 
     def maybe_mark_finished(self, batch_pk: UUID, pending_send_count: int) -> bool:
         """Recompute the same finished condition GET /broadcasts/{batch_id}
@@ -183,7 +187,8 @@ class BroadcastRepository:
             self.db.query(BroadcastBatch).filter(BroadcastBatch.id == batch_pk).update(
                 {"finished": True}, synchronize_session=False
             )
-            self.db.commit()
+            self.db.flush()
+            self.db.expire_all()
             return True
         return False
 
@@ -230,9 +235,10 @@ class BroadcastRepository:
             {column.key: column + 1},
             synchronize_session=False,
         )
-        self.db.commit()
+        self.db.flush()
+        self.db.expire_all()
 
-    def get_stale_unprepared_batch_ids(self, older_than: datetime) -> List[UUID]:
+    def get_stale_unprepared_batch_ids(self, older_than: datetime) -> list[UUID]:
         """Batch PKs with unprepared, non-suppressed recipients past the grace period."""
         rows = (
             self.db.query(BroadcastRecipient.broadcast_batch_id)

@@ -1,5 +1,5 @@
-from typing import List, Optional
 from uuid import UUID
+
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.template import Template
@@ -11,7 +11,7 @@ class TemplateRepository(SoftDeleteRepository[Template]):
     def __init__(self, db: Session):
         super().__init__(db, Template)
 
-    def get_template(self, template_id: UUID) -> Optional[Template]:
+    def get_template(self, template_id: UUID) -> Template | None:
         return (
             self.db.query(Template)
             .options(selectinload(Template.layout), selectinload(Template.created_by))
@@ -19,7 +19,7 @@ class TemplateRepository(SoftDeleteRepository[Template]):
             .first()
         )
 
-    def get_template_by_alias(self, alias: str) -> Optional[Template]:
+    def get_template_by_alias(self, alias: str) -> Template | None:
         return (
             self.db.query(Template)
             .options(selectinload(Template.layout), selectinload(Template.created_by))
@@ -27,7 +27,7 @@ class TemplateRepository(SoftDeleteRepository[Template]):
             .first()
         )
 
-    def get_templates_query(self, tags: Optional[List[str]] = None):
+    def get_templates_query(self, tags: list[str] | None = None):
         query = (
             self.db.query(Template)
             .options(selectinload(Template.layout), selectinload(Template.created_by))
@@ -37,7 +37,7 @@ class TemplateRepository(SoftDeleteRepository[Template]):
             query = query.filter(Template.tags.contains(tags))
         return query
 
-    def get_unique_tags(self) -> List[str]:
+    def get_unique_tags(self) -> list[str]:
         rows = self.db.query(Template.tags).filter(Template.tags.isnot(None)).all()
         unique_tags = set()
         for (tags,) in rows:
@@ -45,26 +45,26 @@ class TemplateRepository(SoftDeleteRepository[Template]):
                 unique_tags.update(tags)
         return sorted(unique_tags)
 
-    def get_templates(self, skip: int = 0, limit: int = 100) -> List[Template]:
+    def get_templates(self, skip: int = 0, limit: int = 100) -> list[Template]:
         return self.db.query(Template).offset(skip).limit(limit).all()
 
     def create_template(
-        self, template: TemplateCreate, created_by_id: Optional[UUID] = None
+        self, template: TemplateCreate, created_by_id: UUID | None = None
     ) -> Template:
         db_template = Template(**template.model_dump(), created_by_id=created_by_id)
         self.db.add(db_template)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(db_template)
         return db_template
 
     def update_template(
         self, template_id: UUID, template: TemplateUpdate
-    ) -> Optional[Template]:
+    ) -> Template | None:
         db_template = self.db.query(Template).filter(Template.id == template_id).first()
         if db_template:
             for key, value in template.model_dump(exclude_unset=True).items():
                 setattr(db_template, key, value)
-            self.db.commit()
+            self.db.flush()
             self.db.refresh(db_template)
         return db_template
 

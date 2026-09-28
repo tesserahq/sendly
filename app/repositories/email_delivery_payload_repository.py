@@ -1,4 +1,5 @@
-from typing import Any, List, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -13,18 +14,18 @@ class EmailDeliveryPayloadRepository:
     def create_payload(self, **kwargs: Any) -> EmailDeliveryPayload:
         payload = EmailDeliveryPayload(**kwargs)
         self.db.add(payload)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(payload)
         return payload
 
-    def get_by_email_id(self, email_id: UUID) -> Optional[EmailDeliveryPayload]:
+    def get_by_email_id(self, email_id: UUID) -> EmailDeliveryPayload | None:
         return (
             self.db.query(EmailDeliveryPayload)
             .filter(EmailDeliveryPayload.email_id == email_id)
             .first()
         )
 
-    def get_by_email_ids(self, email_ids: Sequence[UUID]) -> List[EmailDeliveryPayload]:
+    def get_by_email_ids(self, email_ids: Sequence[UUID]) -> list[EmailDeliveryPayload]:
         return (
             self.db.query(EmailDeliveryPayload)
             .filter(EmailDeliveryPayload.email_id.in_(email_ids))

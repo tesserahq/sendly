@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from typing import List, Sequence, Tuple
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -15,13 +15,13 @@ class EmailSendOutboxRepository:
     def create_entry(self, email_id: UUID) -> EmailSendOutbox:
         entry = EmailSendOutbox(email_id=email_id)
         self.db.add(entry)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(entry)
         return entry
 
     def get_pending_older_than_with_batch(
         self, cutoff: datetime
-    ) -> List[Tuple[UUID, str]]:
+    ) -> list[tuple[UUID, str]]:
         """(email_id, Email.batch_id) pairs for the periodic recovery sweep,
         so recovery-sweep chunks still never span more than one broadcast batch."""
         return (
@@ -53,6 +53,6 @@ class EmailSendOutboxRepository:
         self.db.query(EmailSendOutbox).filter(
             EmailSendOutbox.email_id.in_(email_ids)
         ).update(
-            {"processed_at": datetime.now(timezone.utc)}, synchronize_session=False
+            {"processed_at": datetime.now(UTC)}, synchronize_session=False
         )
-        self.db.commit()
+        self.db.flush()
