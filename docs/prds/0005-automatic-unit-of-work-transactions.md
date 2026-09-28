@@ -1,6 +1,6 @@
 # PRD 0005: Automatic Unit-of-Work Transactions
 
-**Status:** Proposed
+**Status:** Implemented; production validation pending
 
 ## Problem Statement
 
@@ -72,6 +72,8 @@ This design does not make PostgreSQL, Celery, Postmark, and NATS one distributed
 24. As a maintainer, I want CI to reject unmanaged application session construction.
 25. As a maintainer, I want the unused middleware and duplicate session helper removed.
 26. As a Linden maintainer, I want Sendly's pilot findings documented before the larger migration.
+27. As a repository author, I want set-based ORM mutations to keep already-loaded entities consistent without remembering SQLAlchemy execution options.
+28. As a maintainer, I want explicit repository flushes to identify the concrete value or validation they require, so unnecessary database round trips and early lock acquisition are not introduced casually.
 
 ## Implementation Decisions
 
@@ -87,7 +89,11 @@ This design does not make PostgreSQL, Celery, Postmark, and NATS one distributed
 - Every allowlisted early commit has a named phase in its adjacent comment and structured log. There is no phase API.
 - An early commit is irreversibly durable. Later failure requires retry, reconciliation, persisted workflow state, or compensation; it is not described as a rollback.
 - Repositories remain cohesive, domain-oriented persistence adapters. The migration does not require one repository per table or a wholesale domain-model rewrite.
-- Repository mutations add, update, or delete and flush only when necessary. They never commit, roll back, close, begin a root transaction, or accept transaction-control flags.
+- A shared repository base owns set-based ORM mutation execution. Its `_execute_mutation()` and `_scalar_mutation()` helpers apply `synchronize_session="fetch"` so SQLAlchemy reconciles affected rows with objects already present in the Session identity map. Domain repositories never repeat or choose this execution option.
+- The mutation helpers execute the DML immediately, may trigger SQLAlchemy's normal autoflush, and never commit, roll back, close, or explicitly flush unrelated work. `_scalar_mutation()` returns the first `RETURNING` value for conditional transitions and atomic counters.
+- Repository mutations add, update, or delete without explicitly flushing by default. An explicit flush is allowed only when the current method needs a generated identifier, server default, relationship/database state, lock result, or early constraint validation before the execution boundary. The reason must be evident from the method contract or adjacent code.
+- `flush()` is a database synchronization point, not a durability boundary. With pending work it can issue one or more SQL statements, consume network round trips, acquire locks that remain held until transaction completion, surface constraints, and reduce batching opportunities. `flush()` followed by `refresh()` is retained only when `RETURNING` or mapped server defaults cannot satisfy the method's return contract.
+- Set-based updates remain domain-specific operations such as atomic counter increments and conditional state transitions. Sendly does not expose a generic `bulk_update()` API or a caller-selectable synchronization flag.
 - Persistence-aware services and the settings manager follow the repository rule and share the caller's managed session.
 - Domain exceptions propagate unchanged. Translated low-level exceptions use typed errors and retain the original cause.
 - Code that catches an error after writes or a failed flush must re-raise it or contain it in a savepoint. Returning normally after an uncontained write failure is prohibited.
@@ -145,6 +151,7 @@ This design does not make PostgreSQL, Celery, Postmark, and NATS one distributed
 - The unused database middleware is removed.
 - Authentication and onboarding factories receive managed sessions. If the SDK lifecycle cannot support this, the integration is wrapped or moved behind an application-owned entry point.
 - Static AST-based architecture tests reject rollback, close, root-transaction calls, unmanaged session construction, and legacy session helpers outside infrastructure and tests. They reject commit everywhere except the database module and allowlisted top-level workflows.
+- Architecture tests also reject application `expire_all()`, `synchronize_session=False`, and direct repository `self.db.execute()`/`self.db.scalar()` calls that bypass the shared mutation helpers.
 - Each early-commit allowlist entry records the module, reason, commit points, and owner. Violations report the module, function, line, and forbidden call.
 - The initial Sendly allowlist contains only the single-email top-level send workflow and the broadcast send worker's claim boundary. Additional entries require a documented external-I/O or checkpointing reason.
 - The broadcast publisher services and unsubscribe NATS publisher register their existing dispatch operations through `on_commit()`; Sendly does not introduce a generic event gateway solely for transaction handling.
@@ -173,6 +180,8 @@ This design does not make PostgreSQL, Celery, Postmark, and NATS one distributed
 15. Production entry points do not construct unmanaged sessions.
 16. Existing API shapes and domain behavior remain compatible except for corrected atomicity.
 17. Pilot findings explicitly recommend which decisions Linden should retain or change.
+18. Set-based repository mutations keep already-loaded ORM entities current without `expire_all()` or caller-managed synchronization options.
+19. Repositories contain no unexplained explicit flushes; tests prove values promised before commit are available and ordinary writes rely on autoflush or boundary commit.
 
 ## Testing Decisions
 
@@ -181,7 +190,7 @@ This design does not make PostgreSQL, Celery, Postmark, and NATS one distributed
 - Session event tests prove hooks run after the outermost commit and not after savepoint release.
 - Equivalent success and failure scenarios run through HTTP and Celery adapter contract tests. SDK onboarding/authentication receives lifecycle coverage if it performs writes.
 - PostgreSQL integration tests observe durability through independent sessions; the ordinary outer-transaction fixture is insufficient evidence. That fixture uses `join_transaction_mode="create_savepoint"` so a rollback by code under test does not destroy fixture setup.
-- Repository contracts cover create, update, soft-delete, hard-delete, conditional update, and bulk operations, distinguishing flush visibility from durability.
+- Repository contracts cover create, update, soft-delete, hard-delete, conditional update, and bulk operations, distinguishing flush visibility from durability. Identity-map tests preload an entity, execute an atomic mutation, and assert that the same Python object reflects the result without `refresh()` or `expire_all()`.
 - Broadcast tests inject failures throughout acceptance and preparation, including reuse of an idempotency key after rollback.
 - Publisher tests prove after-commit ordering and sweep recovery after dispatch failure.
 - Provider-phase tests use pool checkout/checkin events or session transaction state to prove Postmark calls have no open transaction or checked-out connection.
@@ -209,9 +218,21 @@ This design does not make PostgreSQL, Celery, Postmark, and NATS one distributed
 ## Further Notes
 
 - This PRD depends on PRD 0003. Unit-of-Work atomicity makes claims and reconciliation consistent but does not supply exclusivity.
-- After the Sendly pilot stabilizes the interface, the generic session scope, function-scoped FastAPI dependency factory, active-session context, `on_commit()` behavior, savepoint hook handling, framework contract tests, and optional architecture-test helpers are candidates for extraction into tessera_sdk. Extraction is a follow-up, not a dependency of this PRD. Application-specific early-commit allowlists, provider workflows, repository boundaries, recovery policy, and compensation remain in each API.
+- After the Sendly pilot stabilizes the interface, the generic session scope, function-scoped FastAPI dependency factory, active-session context, `on_commit()` behavior, savepoint hook handling, synchronized repository mutation base, framework contract tests, and optional architecture-test helpers are candidates for extraction into tessera_sdk. Extraction is a follow-up, not a dependency of this PRD. Application-specific early-commit allowlists, domain mutation methods, provider workflows, repository boundaries, recovery policy, and compensation remain in each API.
 - The selected repository pattern is a concrete, non-committing SQLAlchemy persistence adapter scoped to the caller's `Session`. Abstract repository ports, returned Units of Work, and `commit=false` switches are deliberately excluded.
 - Automatic commit is infrastructure behavior, not a convention each developer must remember. Advanced behavior uses native `Session.commit()` under a CI allowlist, plus thin `on_commit()` and `savepoint()` helpers.
 - This follows established SQLAlchemy session-per-execution practice and Django's `ATOMIC_REQUESTS`/`on_commit()` model instead of inventing a second transaction vocabulary.
 - Sendly is a useful pilot because it contains HTTP and Celery entry points, transactional-outbox-style dispatch, provider calls, webhook batches, and a best-effort event bus in a compact codebase.
 - Removing hidden commits may expose tests and flows that relied on cross-session visibility. Those failures are migration evidence and must be resolved at an explicit phase or managed execution boundary.
+
+## Pilot Findings
+
+The merged Sendly implementation validated the automatic Unit-of-Work boundary across HTTP and Celery execution. It also exposed a repository concern that was easy to miss while repositories committed independently: set-based `UPDATE` statements can leave objects already loaded in the same Session stale when session synchronization is disabled.
+
+The first compatibility fix, `flush()` followed by `expire_all()`, was correct only in the broadest sense. The DML statement had already executed, so the flush was redundant, and expiring the entire identity map invalidated unrelated objects. Repeating `execution_options={"synchronize_session": "fetch"}` at every call site fixed the scope but left an obscure correctness option for every repository author to remember.
+
+The final pilot design introduced a shared concrete `Repository` base with protected `_execute_mutation()` and `_scalar_mutation()` methods. It centralizes `synchronize_session="fetch"`, documents that `fetch` uses `RETURNING` where supported (or a SELECT otherwise) to reconcile affected identity-map entries, and states that these helpers do not own transaction completion. Domain repositories now contain only the statement and business intent. Architecture tests prevent direct mutation execution and unsafe identity-map escape hatches from returning.
+
+The pilot also confirmed that explicit flushes should be treated as exceptions. SQLAlchemy autoflush and commit already synchronize ordinary changes. Explicit flush remains appropriate when a method must return generated database state, establish a dependency needed by subsequent work, acquire/observe a database result, or surface a constraint inside a deliberate error boundary. Removing redundant flushes reduces round trips, preserves batching opportunities, and delays lock acquisition.
+
+Recommendation for Linden: retain the entry-point Unit of Work, concrete repositories, post-commit hooks, savepoints, and allowlisted phase commits. Add the synchronized mutation base and identity-map guardrails at the start of the repository migration, and audit each explicit flush rather than mechanically replacing `commit()` with `flush()`.
