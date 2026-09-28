@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.models.email import Email
@@ -50,7 +51,9 @@ class EmailSendOutboxRepository:
     def mark_processed(self, email_ids: Sequence[UUID]) -> None:
         if not email_ids:
             return
-        self.db.query(EmailSendOutbox).filter(
-            EmailSendOutbox.email_id.in_(email_ids)
-        ).update({"processed_at": datetime.now(UTC)}, synchronize_session=False)
-        self.db.flush()
+        statement = (
+            update(EmailSendOutbox)
+            .where(EmailSendOutbox.email_id.in_(email_ids))
+            .values(processed_at=datetime.now(UTC))
+        )
+        self.db.execute(statement, execution_options={"synchronize_session": "fetch"})

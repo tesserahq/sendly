@@ -78,3 +78,41 @@ def test_application_sessions_are_created_only_by_database_infrastructure():
                 )
 
     assert violations == []
+
+
+def test_bulk_mutations_keep_the_identity_map_synchronized():
+    violations = []
+    for path in APP_ROOT.rglob("*.py"):
+        tree = ast.parse(path.read_text())
+        relative_path = str(path.relative_to(APP_ROOT))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "expire_all":
+                violations.append(f"{relative_path}:{node.lineno} calls expire_all()")
+            for keyword in node.keywords:
+                if (
+                    keyword.arg == "synchronize_session"
+                    and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value is False
+                ):
+                    violations.append(
+                        f"{relative_path}:{node.lineno} disables session synchronization"
+                    )
+                if keyword.arg != "execution_options" or not isinstance(
+                    keyword.value, ast.Dict
+                ):
+                    continue
+                options = zip(keyword.value.keys, keyword.value.values)
+                for key, value in options:
+                    if (
+                        isinstance(key, ast.Constant)
+                        and key.value == "synchronize_session"
+                        and isinstance(value, ast.Constant)
+                        and value.value is False
+                    ):
+                        violations.append(
+                            f"{relative_path}:{node.lineno} disables session synchronization"
+                        )
+
+    assert violations == []

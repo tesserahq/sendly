@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.email import Email
@@ -244,24 +245,34 @@ class EmailRepository(SoftDeleteRepository[Email]):
 
         Returns True iff this call performed the first-occurrence transition.
         """
-        updated = (
-            self.db.query(Email)
-            .filter(Email.id == email_id, Email.opened_at.is_(None))
-            .update({"opened_at": occurred_at}, synchronize_session=False)
+        statement = (
+            update(Email)
+            .where(Email.id == email_id, Email.opened_at.is_(None))
+            .values(opened_at=occurred_at)
+            .returning(Email.id)
         )
-        self.db.flush()
-        return updated > 0
+        return (
+            self.db.scalar(
+                statement, execution_options={"synchronize_session": "fetch"}
+            )
+            is not None
+        )
 
     def set_first_clicked_at(self, email_id: UUID, occurred_at: datetime) -> bool:
         """Same atomic first-occurrence semantics as set_first_opened_at, for
         clicked_at."""
-        updated = (
-            self.db.query(Email)
-            .filter(Email.id == email_id, Email.clicked_at.is_(None))
-            .update({"clicked_at": occurred_at}, synchronize_session=False)
+        statement = (
+            update(Email)
+            .where(Email.id == email_id, Email.clicked_at.is_(None))
+            .values(clicked_at=occurred_at)
+            .returning(Email.id)
         )
-        self.db.flush()
-        return updated > 0
+        return (
+            self.db.scalar(
+                statement, execution_options={"synchronize_session": "fetch"}
+            )
+            is not None
+        )
 
     def delete_email(self, email_id: UUID) -> bool:
         """
