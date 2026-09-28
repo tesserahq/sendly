@@ -28,18 +28,27 @@ def test_transaction_lifecycle_calls_stay_at_execution_boundaries():
     for path in iter_python_files():
         tree = ast.parse(path.read_text())
         parents = {
-            child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)
+            child: parent
+            for parent in ast.walk(tree)
+            for child in ast.iter_child_nodes(parent)
         }
         relative_path = str(path.relative_to(APP_ROOT))
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            if not isinstance(node, ast.Call) or not isinstance(
+                node.func, ast.Attribute
+            ):
                 continue
             method = node.func.attr
             function = enclosing_function(node, parents)
-            if method == "commit" and (relative_path, function) in EARLY_COMMIT_ALLOWLIST:
+            if (
+                method == "commit"
+                and (relative_path, function) in EARLY_COMMIT_ALLOWLIST
+            ):
                 continue
             if method in {"commit", "rollback", "close", "begin"}:
-                violations.append(f"{relative_path}:{node.lineno} {function} calls {method}()")
+                violations.append(
+                    f"{relative_path}:{node.lineno} {function} calls {method}()"
+                )
 
     assert violations == []
 
@@ -57,7 +66,9 @@ def test_application_sessions_are_created_only_by_database_infrastructure():
             if not isinstance(node, ast.Call):
                 continue
             if isinstance(node.func, ast.Name) and node.func.id in forbidden_calls:
-                violations.append(f"{relative_path}:{node.lineno} calls {node.func.id}()")
+                violations.append(
+                    f"{relative_path}:{node.lineno} calls {node.func.id}()"
+                )
             if (
                 isinstance(node.func, ast.Attribute)
                 and node.func.attr in forbidden_manager_methods

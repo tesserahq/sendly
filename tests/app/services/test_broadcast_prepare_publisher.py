@@ -51,11 +51,14 @@ class TestDispatchForBatch:
         publisher.repo = MagicMock()
         publisher.repo.get_unprepared_recipients.return_value = []
 
-        with patch(
-            "app.tasks.prepare_broadcast_chunk_task.prepare_broadcast_chunk_task"
-        ) as mock_task, patch(
-            "app.services.broadcast_prepare_publisher.on_commit",
-            side_effect=lambda callback, session: callback(),
+        with (
+            patch(
+                "app.tasks.prepare_broadcast_chunk_task.prepare_broadcast_chunk_task"
+            ) as mock_task,
+            patch(
+                "app.services.broadcast_prepare_publisher.on_commit",
+                side_effect=lambda callback, session: callback(),
+            ),
         ):
             dispatched = publisher.dispatch_for_batch(batch_id)
 
@@ -72,11 +75,14 @@ class TestRunRecoverySweep:
         publisher.repo.get_stale_unprepared_batch_ids.return_value = stale_batch_ids
         publisher.repo.get_unprepared_recipients.return_value = [_make_recipient()]
 
-        with patch(
-            "app.tasks.prepare_broadcast_chunk_task.prepare_broadcast_chunk_task"
-        ) as mock_task, patch(
-            "app.services.broadcast_prepare_publisher.on_commit",
-            side_effect=lambda callback, session: callback(),
+        with (
+            patch(
+                "app.tasks.prepare_broadcast_chunk_task.prepare_broadcast_chunk_task"
+            ) as mock_task,
+            patch(
+                "app.services.broadcast_prepare_publisher.on_commit",
+                side_effect=lambda callback, session: callback(),
+            ),
         ):
             dispatched = publisher.run_recovery_sweep()
 

@@ -52,7 +52,5 @@ class EmailSendOutboxRepository:
             return
         self.db.query(EmailSendOutbox).filter(
             EmailSendOutbox.email_id.in_(email_ids)
-        ).update(
-            {"processed_at": datetime.now(UTC)}, synchronize_session=False
-        )
+        ).update({"processed_at": datetime.now(UTC)}, synchronize_session=False)
         self.db.flush()

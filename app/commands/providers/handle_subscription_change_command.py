@@ -24,9 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class HandleSubscriptionChangeCommand:
-    def __init__(
-        self, db: Session, nats_publisher: NatsEventPublisher | None = None
-    ):
+    def __init__(self, db: Session, nats_publisher: NatsEventPublisher | None = None):
         self.db = db
         self.suppression_repo = SuppressionRepository(db)
         self.nats_publisher = nats_publisher or NatsEventPublisher()
@@ -61,9 +59,7 @@ class HandleSubscriptionChangeCommand:
             # suppression in Postmark) still get suppressed, silently.
             if origin == "Recipient":
                 event = build_email_unsubscribed_event(email)
-                on_commit(
-                    lambda: self._publish_unsubscribed(event), session=self.db
-                )
+                on_commit(lambda: self._publish_unsubscribed(event), session=self.db)
         else:
             self.suppression_repo.remove_suppression(
                 project_id=email.project_id,

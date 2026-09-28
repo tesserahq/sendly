@@ -78,9 +78,7 @@ async def get_db() -> AsyncIterator[Session]:
 DbSession = Annotated[Session, Depends(get_db, scope="function")]
 
 
-def on_commit(
-    callback: Callable[[], Any], session: Session | None = None
-) -> None:
+def on_commit(callback: Callable[[], Any], session: Session | None = None) -> None:
     """Run ``callback`` after commit, or immediately outside a managed scope."""
     active_session = session or _current_session.get()
     if active_session is None:
