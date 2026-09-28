@@ -9,13 +9,14 @@ from sqlalchemy.orm import Session
 from app.constants.email import EmailStatus
 from app.models.broadcast_batch import BroadcastBatch
 from app.models.broadcast_recipient import BroadcastRecipient
+from app.repositories.base_repository import Repository
 
 
-class BroadcastRepository:
+class BroadcastRepository(Repository):
     """Data access for broadcast_batches and broadcast_recipients."""
 
     def __init__(self, db: Session):
-        self.db = db
+        super().__init__(db)
 
     # ==================== BroadcastBatch ====================
 
@@ -123,7 +124,7 @@ class BroadcastRepository:
             .where(BroadcastRecipient.id == recipient_id)
             .values(email_id=email_id)
         )
-        self.db.execute(statement, execution_options={"synchronize_session": "fetch"})
+        self._execute_mutation(statement)
 
     def get_unprepared_recipients(
         self, broadcast_batch_id: UUID, limit: int | None = None
@@ -153,7 +154,7 @@ class BroadcastRepository:
             .where(BroadcastRecipient.id.in_(ids))
             .values(prepared=True)
         )
-        self.db.execute(statement, execution_options={"synchronize_session": "fetch"})
+        self._execute_mutation(statement)
 
     def count_prepared(self, broadcast_batch_id: UUID) -> int:
         return (
@@ -176,9 +177,7 @@ class BroadcastRepository:
             .values(prepared_count=BroadcastBatch.prepared_count + by)
             .returning(BroadcastBatch.prepared_count)
         )
-        return self.db.scalar(
-            statement, execution_options={"synchronize_session": "fetch"}
-        )
+        return self._scalar_mutation(statement)
 
     def maybe_mark_finished(self, batch_pk: UUID, pending_send_count: int) -> bool:
         """Recompute the same finished condition GET /broadcasts/{batch_id}
@@ -198,12 +197,7 @@ class BroadcastRepository:
             .values(finished=True)
             .returning(BroadcastBatch.id)
         )
-        return (
-            self.db.scalar(
-                statement, execution_options={"synchronize_session": "fetch"}
-            )
-            is not None
-        )
+        return self._scalar_mutation(statement) is not None
 
     # Maps the Email.status values that get a denormalized rollup counter to
     # their BroadcastBatch column. Each status is reachable at most once per
@@ -249,7 +243,7 @@ class BroadcastRepository:
             .where(BroadcastBatch.id == batch_pk)
             .values({column.key: column + 1})
         )
-        self.db.execute(statement, execution_options={"synchronize_session": "fetch"})
+        self._execute_mutation(statement)
 
     def get_stale_unprepared_batch_ids(self, older_than: datetime) -> list[UUID]:
         """Batch PKs with unprepared, non-suppressed recipients past the grace period."""

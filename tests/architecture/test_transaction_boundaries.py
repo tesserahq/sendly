@@ -116,3 +116,28 @@ def test_bulk_mutations_keep_the_identity_map_synchronized():
                         )
 
     assert violations == []
+
+
+def test_repositories_use_the_shared_mutation_helpers():
+    violations = []
+    repository_root = APP_ROOT / "repositories"
+    for path in repository_root.rglob("*.py"):
+        if path.name == "base_repository.py":
+            continue
+        tree = ast.parse(path.read_text())
+        relative_path = str(path.relative_to(APP_ROOT))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"execute", "scalar"}
+                and isinstance(node.func.value, ast.Attribute)
+                and isinstance(node.func.value.value, ast.Name)
+                and node.func.value.value.id == "self"
+                and node.func.value.attr == "db"
+            ):
+                violations.append(
+                    f"{relative_path}:{node.lineno} bypasses the shared mutation helper"
+                )
+
+    assert violations == []

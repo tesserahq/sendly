@@ -5,12 +5,13 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.db import Base
+from app.repositories.base_repository import Repository
 
 # Generic type for SQLAlchemy models that have id and deleted_at fields
 T = TypeVar("T", bound=Base)
 
 
-class SoftDeleteRepository(Generic[T]):
+class SoftDeleteRepository(Repository, Generic[T]):
     """
     Generic repository class that provides soft delete functionality for any model.
 
@@ -26,7 +27,7 @@ class SoftDeleteRepository(Generic[T]):
             db: Database session
             model_class: The SQLAlchemy model class that supports soft deletes
         """
-        self.db = db
+        super().__init__(db)
         self.model_class = model_class
 
     def delete_record(self, record_id: UUID) -> bool:

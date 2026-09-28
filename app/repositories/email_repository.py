@@ -251,12 +251,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
             .values(opened_at=occurred_at)
             .returning(Email.id)
         )
-        return (
-            self.db.scalar(
-                statement, execution_options={"synchronize_session": "fetch"}
-            )
-            is not None
-        )
+        return self._scalar_mutation(statement) is not None
 
     def set_first_clicked_at(self, email_id: UUID, occurred_at: datetime) -> bool:
         """Same atomic first-occurrence semantics as set_first_opened_at, for
@@ -267,12 +262,7 @@ class EmailRepository(SoftDeleteRepository[Email]):
             .values(clicked_at=occurred_at)
             .returning(Email.id)
         )
-        return (
-            self.db.scalar(
-                statement, execution_options={"synchronize_session": "fetch"}
-            )
-            is not None
-        )
+        return self._scalar_mutation(statement) is not None
 
     def delete_email(self, email_id: UUID) -> bool:
         """

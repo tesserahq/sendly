@@ -7,11 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.models.email import Email
 from app.models.email_send_outbox import EmailSendOutbox
+from app.repositories.base_repository import Repository
 
 
-class EmailSendOutboxRepository:
+class EmailSendOutboxRepository(Repository):
     def __init__(self, db: Session):
-        self.db = db
+        super().__init__(db)
 
     def create_entry(self, email_id: UUID) -> EmailSendOutbox:
         entry = EmailSendOutbox(email_id=email_id)
@@ -56,4 +57,4 @@ class EmailSendOutboxRepository:
             .where(EmailSendOutbox.email_id.in_(email_ids))
             .values(processed_at=datetime.now(UTC))
         )
-        self.db.execute(statement, execution_options={"synchronize_session": "fetch"})
+        self._execute_mutation(statement)
