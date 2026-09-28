@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.constants.email import EmailStatus
 from app.models.broadcast_batch import BroadcastBatch
 from app.models.broadcast_recipient import BroadcastRecipient
-from app.repositories.base_repository import Repository
+from tessera_sdk.infra import Repository
 
 
 class BroadcastRepository(Repository):

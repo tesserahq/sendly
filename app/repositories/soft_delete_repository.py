@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.db import Base
-from app.repositories.base_repository import Repository
+from tessera_sdk.infra import Repository
 
 # Generic type for SQLAlchemy models that have id and deleted_at fields
 T = TypeVar("T", bound=Base)

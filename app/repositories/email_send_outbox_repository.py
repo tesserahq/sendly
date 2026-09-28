@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.email import Email
 from app.models.email_send_outbox import EmailSendOutbox
-from app.repositories.base_repository import Repository
+from tessera_sdk.infra import Repository
 
 
 class EmailSendOutboxRepository(Repository):

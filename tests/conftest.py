@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from fastapi import Request
 from fastapi.security import HTTPAuthorizationCredentials
 from app.db import get_db
+from tessera_sdk.testing import managed_db_override
 from starlette.middleware.base import BaseHTTPMiddleware
 from alembic import command
 from alembic.config import Config
@@ -219,14 +220,6 @@ def create_client_fixture(user_fixture_name):
         # Get the user from the specified fixture
         test_user = request.getfixturevalue(user_fixture_name)
 
-        async def override_get_db():
-            try:
-                yield db
-                db.commit()
-            except Exception:
-                db.rollback()
-                raise
-
         # Create app with testing mode ON (no auth middleware)
         logger.debug("Creating app with testing mode ON")
         app = create_app(testing=True, auth_middleware=MockAuthenticationMiddleware)
@@ -235,7 +228,7 @@ def create_client_fixture(user_fixture_name):
         app.state.test_user = test_user
 
         # Override dependencies
-        app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[get_db] = managed_db_override(db)
 
         # Create test client with auth headers
         test_client = TestClient(app)
@@ -270,17 +263,9 @@ def create_real_db_client_fixture(user_fixture_name):
     def client_fixture(real_db, request):
         test_user = request.getfixturevalue(user_fixture_name)
 
-        async def override_get_db():
-            try:
-                yield real_db
-                real_db.commit()
-            except Exception:
-                real_db.rollback()
-                raise
-
         app = create_app(testing=True, auth_middleware=MockAuthenticationMiddleware)
         app.state.test_user = test_user
-        app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[get_db] = managed_db_override(real_db)
 
         test_client = TestClient(app)
         test_client.headers.update({"Authorization": "Bearer mock_token"})
