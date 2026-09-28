@@ -1,72 +1,26 @@
+"""Sendly's wiring of the tessera_sdk managed-transaction boundary.
+
+The on_commit / savepoint / session_scope contracts are tested in the SDK;
+these tests pin how Sendly exposes them.
+"""
+
 from contextlib import contextmanager
 from unittest.mock import patch
 
+import tessera_sdk.infra as sdk_infra
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.db import DbSession, on_commit, savepoint
+from app import db as app_db
+from app.db import DbSession
 
 
-def make_session() -> Session:
-    return Session(create_engine("sqlite://"))
-
-
-def test_on_commit_runs_callbacks_in_registration_order():
-    session = make_session()
-    calls = []
-
-    on_commit(lambda: calls.append("first"), session=session)
-    on_commit(lambda: calls.append("second"), session=session)
-    session.execute(text("SELECT 1"))
-    session.commit()
-
-    assert calls == ["first", "second"]
-
-
-def test_root_rollback_discards_on_commit_callbacks():
-    session = make_session()
-    calls = []
-
-    on_commit(lambda: calls.append("called"), session=session)
-    session.execute(text("SELECT 1"))
-    session.rollback()
-    session.commit()
-
-    assert calls == []
-
-
-def test_failed_savepoint_discards_only_its_callbacks():
-    session = make_session()
-    calls = []
-    on_commit(lambda: calls.append("outer"), session=session)
-
-    try:
-        with savepoint(session):
-            on_commit(lambda: calls.append("inner"), session=session)
-            raise ValueError("invalid item")
-    except ValueError:
-        pass
-
-    session.commit()
-
-    assert calls == ["outer"]
-
-
-def test_callback_failure_does_not_stop_later_callbacks():
-    session = make_session()
-    calls = []
-
-    def fail():
-        raise RuntimeError("callback failed")
-
-    on_commit(fail, session=session)
-    on_commit(lambda: calls.append("after failure"), session=session)
-    session.execute(text("SELECT 1"))
-    session.commit()
-
-    assert calls == ["after failure"]
+def test_app_db_exposes_the_sdk_helpers():
+    assert app_db.on_commit is sdk_infra.on_commit
+    assert app_db.savepoint is sdk_infra.savepoint
+    assert app_db.session_scope == app_db.db_manager.session_scope
 
 
 def test_http_commit_failure_is_reported_before_response_is_sent():
@@ -78,14 +32,14 @@ def test_http_commit_failure_is_reported_before_response_is_sent():
 
     @contextmanager
     def failing_scope():
-        session = make_session()
+        session = Session(create_engine("sqlite://"))
         try:
             yield session
             raise RuntimeError("commit failed")
         finally:
             session.close()
 
-    with patch("app.db.db_manager.db_session", failing_scope):
+    with patch.object(app_db.db_manager, "db_session", failing_scope):
         client = TestClient(app, raise_server_exceptions=False)
         response = client.post("/write")
 

@@ -1,29 +1,18 @@
-"""Application-owned session boundary for tessera_sdk authentication middleware."""
+"""User service for the tessera_sdk authentication/onboarding middlewares.
 
-from app.db import session_scope
+Each call runs in its own managed session and returns a detached user; see
+tessera_sdk.server.user_service.
+"""
+
+from tessera_sdk.server.user_service import create_managed_user_service_factory
+
+from app.db import db_manager
 from app.repositories.user_repository import UserRepository
-from app.schemas.user import UserOnboard
 
-
-class SDKUserService:
-    """Expose the SDK's expected user methods without giving it session ownership."""
-
-    def get_user_by_id_or_external_id(self, user_id: str):
-        with session_scope() as session:
-            user = UserRepository(session).get_user_by_id_or_external_id(user_id)
-            if user is not None:
-                session.expunge(user)
-            return user
-
-    def onboard_user(self, user_data: UserOnboard):
-        with session_scope() as session:
-            user = UserRepository(session).onboard_user(user_data)
-            session.expunge(user)
-            return user
-
-    def close(self) -> None:
-        """The SDK calls close; each method has already completed its scope."""
-
-
-def create_sdk_user_service() -> SDKUserService:
-    return SDKUserService()
+create_sdk_user_service = create_managed_user_service_factory(
+    db_manager,
+    get_user=lambda db, user_id: UserRepository(db).get_user_by_id_or_external_id(
+        user_id
+    ),
+    onboard_user=lambda db, user_data: UserRepository(db).onboard_user(user_data),
+)

@@ -1,24 +1,31 @@
-"""Database setup and the application's transaction boundary."""
+"""Database setup and the application's transaction boundary.
 
-import logging
-from collections.abc import AsyncIterator, Callable, Iterator
-from contextlib import contextmanager
-from contextvars import ContextVar
-from typing import Annotated, Any
+Transaction handling comes from tessera_sdk (docs/managed-transactions.md in
+tessera-sdk-py): each execution gets one session that commits on success and
+rolls back on error. This module wires it to Sendly's settings and re-exports
+the helpers under the names the application imports.
+"""
 
-from fastapi import Depends
 from sqlalchemy import event
 from sqlalchemy.orm import Session, declarative_base, with_loader_criteria
+from tessera_sdk.infra import current_session, on_commit, savepoint
 from tessera_sdk.infra.database import DatabaseManager
+from tessera_sdk.server.dependencies import create_db_dependency
 
 from app.config import get_settings
 
-logger = logging.getLogger(__name__)
-
-_ON_COMMIT_HOOKS = "sendly_on_commit_hooks"
-_current_session: ContextVar[Session | None] = ContextVar(
-    "sendly_current_session", default=None
-)
+__all__ = [
+    "Base",
+    "DbSession",
+    "SessionLocal",
+    "current_session",
+    "db_manager",
+    "engine",
+    "get_db",
+    "on_commit",
+    "savepoint",
+    "session_scope",
+]
 
 Base = declarative_base()
 
@@ -41,7 +48,6 @@ def _add_soft_delete_criteria(execute_state):
         )
 
 
-# Initialize database manager
 settings = get_settings()
 db_manager = DatabaseManager(
     database_url=settings.database_url,
@@ -51,81 +57,13 @@ db_manager = DatabaseManager(
     pool_recycle=300,
     pool_use_lifo=True,
     application_name=settings.db_app_name,
+    autoflush=True,
 )
 
-# Expose the same interface for backward compatibility
 engine = db_manager.engine
 SessionLocal = db_manager.SessionLocal
 
-# tessera_sdk's DatabaseManager creates sessions with autoflush=False. Restore
-# SQLAlchemy's default so a query always sees the pending changes made earlier
-# in the same execution, without explicit flush() calls. Remove this once the
-# SDK default changes.
-SessionLocal.configure(autoflush=True)
-
-
-@contextmanager
-def session_scope() -> Iterator[Session]:
-    """Open one managed session for one application execution."""
-    with db_manager.db_session() as session:
-        token = _current_session.set(session)
-        try:
-            yield session
-        finally:
-            _current_session.reset(token)
-
-
-async def get_db() -> AsyncIterator[Session]:
-    """Commit or roll back before FastAPI sends the response."""
-    with session_scope() as session:
-        yield session
-
-
-DbSession = Annotated[Session, Depends(get_db, scope="function")]
-
-
-def on_commit(callback: Callable[[], Any], session: Session | None = None) -> None:
-    """Run ``callback`` after commit, or immediately outside a managed scope."""
-    active_session = session or _current_session.get()
-    if active_session is None:
-        callback()
-        return
-
-    hooks = active_session.info.setdefault(_ON_COMMIT_HOOKS, [])
-    hooks.append(callback)
-
-
-@contextmanager
-def savepoint(session: Session) -> Iterator[None]:
-    """Create a savepoint and discard callbacks registered by failed work."""
-    hooks = session.info.setdefault(_ON_COMMIT_HOOKS, [])
-    mark = len(hooks)
-    try:
-        with session.begin_nested():
-            yield
-    except Exception:
-        del hooks[mark:]
-        raise
-
-
-@event.listens_for(Session, "after_commit")
-def _run_on_commit_hooks(session: Session) -> None:
-    # Releasing a savepoint is not a durability boundary.
-    if session.in_nested_transaction():
-        return
-
-    hooks = session.info.pop(_ON_COMMIT_HOOKS, [])
-    for callback in hooks:
-        try:
-            callback()
-        except Exception:
-            logger.exception(
-                "Post-commit callback failed",
-                extra={"callback": getattr(callback, "__qualname__", repr(callback))},
-            )
-
-
-@event.listens_for(Session, "after_soft_rollback")
-def _discard_on_root_rollback(session: Session, transaction) -> None:
-    if transaction.parent is None:
-        session.info.pop(_ON_COMMIT_HOOKS, None)
+# One managed session per execution: routes declare `db: DbSession`; tasks and
+# other entry points use `with session_scope() as db:`.
+get_db, DbSession = create_db_dependency(db_manager)
+session_scope = db_manager.session_scope
