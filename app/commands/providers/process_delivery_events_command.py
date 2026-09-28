@@ -1,18 +1,21 @@
 """Command for processing email delivery events from provider webhooks."""
 
 from __future__ import annotations
-from typing import Dict, Any, List
-from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
 
-from app.providers.email_provider import EmailProvider
-from app.providers.base import EmailEvent
-from app.repositories.broadcast_repository import BroadcastRepository
-from app.repositories.email_repository import EmailRepository
-from app.services.email_lifecycle_service import EmailLifecycleService
+from typing import Any
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
 from app.commands.providers.handle_subscription_change_command import (
     HandleSubscriptionChangeCommand,
 )
+from app.db import savepoint
+from app.providers.base import EmailEvent
+from app.providers.email_provider import EmailProvider
+from app.repositories.broadcast_repository import BroadcastRepository
+from app.repositories.email_repository import EmailRepository
+from app.services.email_lifecycle_service import EmailLifecycleService
 
 # Event types that represent a Postmark SubscriptionChange (unsubscribe or
 # reactivation), requiring suppression-table writes/NATS publishing on top of
@@ -47,9 +50,9 @@ class ProcessDeliveryEventsCommand:
         self,
         provider: EmailProvider,
         body_bytes: bytes,
-        payload: Dict[str, Any],
-        headers: Dict[str, str],
-    ) -> Dict[str, Any]:
+        payload: dict[str, Any],
+        headers: dict[str, str],
+    ) -> dict[str, Any]:
         """
         Process delivery events from a provider webhook.
 
@@ -77,11 +80,12 @@ class ProcessDeliveryEventsCommand:
 
         # Process each event
         processed_count = 0
-        failed_events: List[Dict[str, Any]] = []
+        failed_events: list[dict[str, Any]] = []
 
         for event in parsed_events:
             try:
-                self._process_single_event(event, provider.provider_id)
+                with savepoint(self.db):
+                    self._process_single_event(event, provider.provider_id)
                 processed_count += 1
             except Exception as e:
                 failed_events.append(

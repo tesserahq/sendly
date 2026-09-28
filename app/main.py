@@ -1,29 +1,30 @@
 import logging
-from fastapi import FastAPI, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from app.config import get_settings
+
 import rollbar
-from rollbar.logger import RollbarHandler
-from rollbar.contrib.fastapi import ReporterMiddleware as RollbarMiddleware
-from fastapi_pagination import add_pagination
-from tessera_sdk.server.health import get_livez_readyz_router
-from tessera_sdk.server.dependencies.auth import get_current_user
+from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from app.models.user import User
-from .routers import (
-    email,
-    provider,
-    layout,
-    template,
-    broadcast,
-)
+from fastapi_pagination import add_pagination
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from app.telemetry import setup_tracing
-from app.exceptions.handlers import register_exception_handlers
-from app.core.logging_config import get_logger
-from app.db import db_manager
 from prometheus_fastapi_instrumentator import Instrumentator
-from app.telemetry import _patch_fastapi_route_details
+from rollbar.contrib.fastapi import ReporterMiddleware as RollbarMiddleware
+from rollbar.logger import RollbarHandler
+from tessera_sdk.server.dependencies.auth import get_current_user
+from tessera_sdk.server.health import get_livez_readyz_router
+
+from app.config import get_settings
+from app.core.logging_config import get_logger
+from app.exceptions.handlers import register_exception_handlers
+from app.models.user import User
+from app.telemetry import _patch_fastapi_route_details, setup_tracing
+
+from .routers import (
+    broadcast,
+    email,
+    layout,
+    provider,
+    template,
+)
 
 SKIP_PATHS = ["/metrics", "/livez", "/readyz"]
 
@@ -67,20 +68,17 @@ def create_app(testing: bool = False, auth_middleware=None) -> FastAPI:
         from tessera_sdk.server.middleware.user_onboarding import (
             UserOnboardingMiddleware,
         )
-        from tessera_sdk.infra.service_factory import create_service_factory
-        from app.repositories.user_repository import UserRepository
 
-        # Create service factory for UserRepository
-        user_service_factory = create_service_factory(UserRepository, db_manager)
+        from app.services.sdk_user_service import create_sdk_user_service
 
         app.add_middleware(
             UserOnboardingMiddleware,
-            user_service_factory=user_service_factory,
+            user_service_factory=create_sdk_user_service,
         )
         app.add_middleware(
             AuthenticationMiddleware,
             skip_paths=SKIP_PATHS,
-            user_service_factory=user_service_factory,
+            user_service_factory=create_sdk_user_service,
         )
 
     else:

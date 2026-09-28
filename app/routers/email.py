@@ -1,12 +1,11 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
 from uuid import UUID
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import paginate
 
-from app.db import get_db
+from app.db import DbSession
 from app.commands.send_email_command import SendEmailCommand
 from app.providers.base import EmailCreateRequest
 from app.schemas.email import Email
@@ -58,7 +57,7 @@ rbac = build_rbac_dependencies(
 @router.post("", response_model=Email, status_code=status.HTTP_200_OK)
 def create_email(
     request: EmailCreateRequest,
-    db: Session = Depends(get_db),
+    db: DbSession,
     _authorized: bool = Depends(rbac["create"]),
 ) -> Email:
     """
@@ -93,6 +92,7 @@ def get_email(
 
 @router.get("", response_model=Page[Email])
 def list_emails(
+    db: DbSession,
     project_id: Annotated[
         Optional[UUID],
         Query(description="Project ID to filter emails by"),
@@ -125,7 +125,6 @@ def list_emails(
             description="Search recipient email or subject (case-insensitive, partial match)"
         ),
     ] = None,
-    db: Session = Depends(get_db),
     params: Params = Depends(),
     _authorized: bool = Depends(rbac["read"]),
 ) -> Page[Email]:

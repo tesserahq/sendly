@@ -1,30 +1,33 @@
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any
 from uuid import UUID
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.constants.email import EmailStatus
 from app.models.broadcast_batch import BroadcastBatch
 from app.models.broadcast_recipient import BroadcastRecipient
+from app.repositories.base_repository import Repository
 
 
-class BroadcastRepository:
+class BroadcastRepository(Repository):
     """Data access for broadcast_batches and broadcast_recipients."""
 
     def __init__(self, db: Session):
-        self.db = db
+        super().__init__(db)
 
     # ==================== BroadcastBatch ====================
 
-    def get_batch_by_id(self, batch_pk: UUID) -> Optional[BroadcastBatch]:
+    def get_batch_by_id(self, batch_pk: UUID) -> BroadcastBatch | None:
         return (
             self.db.query(BroadcastBatch).filter(BroadcastBatch.id == batch_pk).first()
         )
 
     def get_batch_by_idempotency_key(
-        self, project_id: Optional[UUID], idempotency_key: str
-    ) -> Optional[BroadcastBatch]:
+        self, project_id: UUID | None, idempotency_key: str
+    ) -> BroadcastBatch | None:
         # project_id = NULL never matches in SQL, so a global (no
         # project_id) broadcast needs an explicit IS NULL branch here or
         # idempotency replay would silently create a duplicate batch every
@@ -43,7 +46,7 @@ class BroadcastRepository:
             .first()
         )
 
-    def get_batches_query(self, project_id: Optional[UUID] = None):
+    def get_batches_query(self, project_id: UUID | None = None):
         """Query for broadcast batches, newest first, for use with
         fastapi-pagination's paginate()."""
         query = self.db.query(BroadcastBatch)
@@ -51,7 +54,7 @@ class BroadcastRepository:
             query = query.filter(BroadcastBatch.project_id == project_id)
         return query.order_by(BroadcastBatch.created_at.desc())
 
-    def get_batch_by_batch_id(self, batch_id: str) -> Optional[BroadcastBatch]:
+    def get_batch_by_batch_id(self, batch_id: str) -> BroadcastBatch | None:
         """batch_id is server-generated (a UUID) and globally unique — no
         project_id scoping needed, unlike idempotency_key (caller-chosen,
         legitimately reused across different projects/callers)."""
@@ -64,11 +67,11 @@ class BroadcastRepository:
     def create_batch(
         self,
         *,
-        project_id: Optional[UUID],
+        project_id: UUID | None,
         batch_id: str,
-        idempotency_key: Optional[str],
+        idempotency_key: str | None,
         request_fingerprint: str,
-        content_spec: Dict[str, Any],
+        content_spec: dict[str, Any],
         queued_count: int,
         suppressed_count: int,
     ) -> BroadcastBatch:
@@ -82,7 +85,7 @@ class BroadcastRepository:
             suppressed_count=suppressed_count,
         )
         self.db.add(batch)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(batch)
         return batch
 
@@ -93,7 +96,7 @@ class BroadcastRepository:
         *,
         broadcast_batch_id: UUID,
         recipients: Sequence[Any],
-        suppressed_emails: Set[str],
+        suppressed_emails: set[str],
     ) -> None:
         rows = [
             BroadcastRecipient(
@@ -109,21 +112,23 @@ class BroadcastRepository:
             for recipient in recipients
         ]
         self.db.add_all(rows)
-        self.db.commit()
+        self.db.flush()
 
     def link_recipient_to_email(self, recipient_id: UUID, email_id: UUID) -> None:
         """Populate the nullable, unique recipient -> email relationship.
         Called by the prepare stage right after it creates the Email for a
         successfully-rendered recipient; suppressed/failed recipients never
         get this call."""
-        self.db.query(BroadcastRecipient).filter(
-            BroadcastRecipient.id == recipient_id
-        ).update({"email_id": email_id}, synchronize_session=False)
-        self.db.commit()
+        statement = (
+            update(BroadcastRecipient)
+            .where(BroadcastRecipient.id == recipient_id)
+            .values(email_id=email_id)
+        )
+        self._execute_mutation(statement)
 
     def get_unprepared_recipients(
-        self, broadcast_batch_id: UUID, limit: Optional[int] = None
-    ) -> List[BroadcastRecipient]:
+        self, broadcast_batch_id: UUID, limit: int | None = None
+    ) -> list[BroadcastRecipient]:
         """Unprepared, non-suppressed recipients for one batch (what prepare dispatches)."""
         query = self.db.query(BroadcastRecipient).filter(
             BroadcastRecipient.broadcast_batch_id == broadcast_batch_id,
@@ -134,7 +139,7 @@ class BroadcastRepository:
             query = query.limit(limit)
         return query.all()
 
-    def get_recipients_by_ids(self, ids: Sequence[UUID]) -> List[BroadcastRecipient]:
+    def get_recipients_by_ids(self, ids: Sequence[UUID]) -> list[BroadcastRecipient]:
         return (
             self.db.query(BroadcastRecipient)
             .filter(BroadcastRecipient.id.in_(ids))
@@ -144,10 +149,12 @@ class BroadcastRepository:
     def mark_recipients_prepared(self, ids: Sequence[UUID]) -> None:
         if not ids:
             return
-        self.db.query(BroadcastRecipient).filter(BroadcastRecipient.id.in_(ids)).update(
-            {"prepared": True}, synchronize_session=False
+        statement = (
+            update(BroadcastRecipient)
+            .where(BroadcastRecipient.id.in_(ids))
+            .values(prepared=True)
         )
-        self.db.commit()
+        self._execute_mutation(statement)
 
     def count_prepared(self, broadcast_batch_id: UUID) -> int:
         return (
@@ -159,16 +166,18 @@ class BroadcastRepository:
             .count()
         )
 
-    def increment_prepared_count(self, batch_pk: UUID, by: int) -> None:
+    def increment_prepared_count(self, batch_pk: UUID, by: int) -> int | None:
         """Atomic SQL increment, not read-modify-write — prepare chunks for
         the same batch can run concurrently across Celery workers."""
         if by <= 0:
-            return
-        self.db.query(BroadcastBatch).filter(BroadcastBatch.id == batch_pk).update(
-            {"prepared_count": BroadcastBatch.prepared_count + by},
-            synchronize_session=False,
+            return None
+        statement = (
+            update(BroadcastBatch)
+            .where(BroadcastBatch.id == batch_pk)
+            .values(prepared_count=BroadcastBatch.prepared_count + by)
+            .returning(BroadcastBatch.prepared_count)
         )
-        self.db.commit()
+        return self._scalar_mutation(statement)
 
     def maybe_mark_finished(self, batch_pk: UUID, pending_send_count: int) -> bool:
         """Recompute the same finished condition GET /broadcasts/{batch_id}
@@ -176,16 +185,19 @@ class BroadcastRepository:
         outbox entries still pending for this batch), and persist it once
         it holds. Idempotent — safe to call from multiple write points
         (prepare and send stages) without double-marking."""
-        batch = self.get_batch_by_id(batch_pk)
-        if batch is None or batch.finished:
+        if pending_send_count != 0:
             return False
-        if batch.prepared_count == batch.queued_count and pending_send_count == 0:
-            self.db.query(BroadcastBatch).filter(BroadcastBatch.id == batch_pk).update(
-                {"finished": True}, synchronize_session=False
+        statement = (
+            update(BroadcastBatch)
+            .where(
+                BroadcastBatch.id == batch_pk,
+                BroadcastBatch.finished.is_(False),
+                BroadcastBatch.prepared_count == BroadcastBatch.queued_count,
             )
-            self.db.commit()
-            return True
-        return False
+            .values(finished=True)
+            .returning(BroadcastBatch.id)
+        )
+        return self._scalar_mutation(statement) is not None
 
     # Maps the Email.status values that get a denormalized rollup counter to
     # their BroadcastBatch column. Each status is reachable at most once per
@@ -226,13 +238,14 @@ class BroadcastRepository:
         No-op when `column` is None (an untracked status/engagement kind)."""
         if column is None:
             return
-        self.db.query(BroadcastBatch).filter(BroadcastBatch.id == batch_pk).update(
-            {column.key: column + 1},
-            synchronize_session=False,
+        statement = (
+            update(BroadcastBatch)
+            .where(BroadcastBatch.id == batch_pk)
+            .values({column.key: column + 1})
         )
-        self.db.commit()
+        self._execute_mutation(statement)
 
-    def get_stale_unprepared_batch_ids(self, older_than: datetime) -> List[UUID]:
+    def get_stale_unprepared_batch_ids(self, older_than: datetime) -> list[UUID]:
         """Batch PKs with unprepared, non-suppressed recipients past the grace period."""
         rows = (
             self.db.query(BroadcastRecipient.broadcast_batch_id)

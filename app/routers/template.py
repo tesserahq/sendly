@@ -1,12 +1,11 @@
 from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
 from uuid import UUID
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import paginate
 from tessera_sdk.server.dependencies.auth import get_current_user
 
-from app.db import get_db
+from app.db import DbSession
 from app.models.user import User
 from app.schemas.template import Template, TemplateClone, TemplateCreate, TemplateUpdate
 from app.repositories.template_repository import TemplateRepository
@@ -30,7 +29,7 @@ rbac = build_rbac_dependencies(resource=RESOURCE, project_resolver=global_domain
 @router.post("", response_model=Template, status_code=status.HTTP_201_CREATED)
 def create_template(
     request: TemplateCreate,
-    db: Session = Depends(get_db),
+    db: DbSession,
     current_user: User = Depends(get_current_user),
     _authorized: bool = Depends(rbac["create"]),
 ) -> Template:
@@ -39,11 +38,11 @@ def create_template(
 
 @router.get("", response_model=Page[Template])
 def list_templates(
+    db: DbSession,
     tag: Annotated[
         Optional[List[str]],
         Query(description="Filter by tag; repeat for multiple tags (AND semantics)"),
     ] = None,
-    db: Session = Depends(get_db),
     params: Params = Depends(),
     _authorized: bool = Depends(rbac["read"]),
 ) -> Page[Template]:
@@ -52,7 +51,7 @@ def list_templates(
 
 @router.get("/tags", response_model=List[str])
 def list_template_tags(
-    db: Session = Depends(get_db),
+    db: DbSession,
     _authorized: bool = Depends(rbac["read"]),
 ) -> List[str]:
     return TemplateRepository(db).get_unique_tags()
@@ -71,8 +70,8 @@ def get_template(
 )
 def clone_template(
     template_id: UUID,
+    db: DbSession,
     request: TemplateClone = TemplateClone(),
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _authorized: bool = Depends(rbac["create"]),
 ) -> Template:
@@ -85,7 +84,7 @@ def clone_template(
 def update_template(
     template_id: UUID,
     request: TemplateUpdate,
-    db: Session = Depends(get_db),
+    db: DbSession,
     _authorized: bool = Depends(rbac["update"]),
 ) -> Template:
     result = UpdateTemplateCommand(db).execute(template_id, request)
@@ -97,7 +96,7 @@ def update_template(
 @router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_template(
     template_id: UUID,
-    db: Session = Depends(get_db),
+    db: DbSession,
     _authorized: bool = Depends(rbac["delete"]),
 ) -> None:
     deleted = DeleteTemplateCommand(db).execute(template_id)

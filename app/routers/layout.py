@@ -1,19 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import paginate
 from tessera_sdk.server.dependencies.auth import get_current_user
 
-from app.db import get_db
-from app.models.user import User
-from app.schemas.layout import Layout, LayoutCreate, LayoutUpdate
-from app.repositories.layout_repository import LayoutRepository
-from app.commands.layouts.create_layout_command import CreateLayoutCommand
-from app.commands.layouts.update_layout_command import UpdateLayoutCommand
-from app.commands.layouts.delete_layout_command import DeleteLayoutCommand
 from app.auth.rbac import build_rbac_dependencies
+from app.commands.layouts.create_layout_command import CreateLayoutCommand
+from app.commands.layouts.delete_layout_command import DeleteLayoutCommand
+from app.commands.layouts.update_layout_command import UpdateLayoutCommand
+from app.db import DbSession
+from app.models.user import User
+from app.repositories.layout_repository import LayoutRepository
 from app.routers.utils.dependencies import get_layout_by_id, global_domain
+from app.schemas.layout import Layout, LayoutCreate, LayoutUpdate
 
 router = APIRouter(
     prefix="/layouts",
@@ -28,7 +28,7 @@ rbac = build_rbac_dependencies(resource=RESOURCE, project_resolver=global_domain
 @router.post("", response_model=Layout, status_code=status.HTTP_201_CREATED)
 def create_layout(
     request: LayoutCreate,
-    db: Session = Depends(get_db),
+    db: DbSession,
     current_user: User = Depends(get_current_user),
     _authorized: bool = Depends(rbac["create"]),
 ) -> Layout:
@@ -37,7 +37,7 @@ def create_layout(
 
 @router.get("", response_model=Page[Layout])
 def list_layouts(
-    db: Session = Depends(get_db),
+    db: DbSession,
     params: Params = Depends(),
     _authorized: bool = Depends(rbac["read"]),
 ) -> Page[Layout]:
@@ -56,7 +56,7 @@ def get_layout(
 def update_layout(
     layout_id: UUID,
     request: LayoutUpdate,
-    db: Session = Depends(get_db),
+    db: DbSession,
     _authorized: bool = Depends(rbac["update"]),
 ) -> Layout:
     result = UpdateLayoutCommand(db).execute(layout_id, request)
@@ -68,7 +68,7 @@ def update_layout(
 @router.delete("/{layout_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_layout(
     layout_id: UUID,
-    db: Session = Depends(get_db),
+    db: DbSession,
     _authorized: bool = Depends(rbac["delete"]),
 ) -> None:
     deleted = DeleteLayoutCommand(db).execute(layout_id)

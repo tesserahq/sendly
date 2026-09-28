@@ -1,27 +1,29 @@
-from datetime import datetime, timezone
-from typing import List, Sequence, Tuple
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.models.email import Email
 from app.models.email_send_outbox import EmailSendOutbox
+from app.repositories.base_repository import Repository
 
 
-class EmailSendOutboxRepository:
+class EmailSendOutboxRepository(Repository):
     def __init__(self, db: Session):
-        self.db = db
+        super().__init__(db)
 
     def create_entry(self, email_id: UUID) -> EmailSendOutbox:
         entry = EmailSendOutbox(email_id=email_id)
         self.db.add(entry)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(entry)
         return entry
 
     def get_pending_older_than_with_batch(
         self, cutoff: datetime
-    ) -> List[Tuple[UUID, str]]:
+    ) -> list[tuple[UUID, str]]:
         """(email_id, Email.batch_id) pairs for the periodic recovery sweep,
         so recovery-sweep chunks still never span more than one broadcast batch."""
         return (
@@ -50,9 +52,9 @@ class EmailSendOutboxRepository:
     def mark_processed(self, email_ids: Sequence[UUID]) -> None:
         if not email_ids:
             return
-        self.db.query(EmailSendOutbox).filter(
-            EmailSendOutbox.email_id.in_(email_ids)
-        ).update(
-            {"processed_at": datetime.now(timezone.utc)}, synchronize_session=False
+        statement = (
+            update(EmailSendOutbox)
+            .where(EmailSendOutbox.email_id.in_(email_ids))
+            .values(processed_at=datetime.now(UTC))
         )
-        self.db.commit()
+        self._execute_mutation(statement)

@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import Dict, Any
 from fastapi import APIRouter, Query, Request, HTTPException, Depends, status
-from sqlalchemy.orm import Session
 
 from app.providers.registry import list_providers, get_provider
 from app.schemas.common import ListResponse
 from app.schemas.provider import ProviderRead
-from app.db import get_db
+from app.db import DbSession
 from app.commands.providers.process_delivery_events_command import (
     ProcessDeliveryEventsCommand,
 )
@@ -73,8 +72,8 @@ def list_email_providers(
 async def receive_delivery_events(
     provider_id: str,
     request: Request,
+    db: DbSession,
     _authorized: bool = Depends(rbac_provider_delivery_events["create"]),
-    db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """
     Receive and process email delivery events from provider webhooks.

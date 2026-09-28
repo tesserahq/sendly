@@ -1,22 +1,21 @@
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 from tessera_sdk.config import get_settings as get_sdk_settings
+from tessera_sdk.server.dependencies.auth import get_current_user
 
-from app.db import get_db
+from app.config import get_settings
+from app.db import DbSession
+from app.schemas.common import DataResponse
 from app.schemas.system import (
-    GeneralGroup,
-    SystemSettingsGrouped,
     AppGroup,
     DatabaseGroup,
-    TelemetryGroup,
-    RedisGroup,
     ExternalServicesGroup,
+    GeneralGroup,
+    RedisGroup,
+    SystemSettingsGrouped,
+    TelemetryGroup,
 )
-from app.schemas.common import DataResponse
-from tessera_sdk.server.dependencies.auth import get_current_user
-from app.config import get_settings
 
 router = APIRouter(
     prefix="/system",
@@ -38,7 +37,7 @@ def _get_redis_group() -> RedisGroup:
 
 @router.get("/settings", response_model=DataResponse[SystemSettingsGrouped])
 def get_system_settings(
-    db: Session = Depends(get_db),
+    db: DbSession,
     current_user=Depends(get_current_user),
 ):
     """Return grouped, non-sensitive system configuration settings for troubleshooting."""

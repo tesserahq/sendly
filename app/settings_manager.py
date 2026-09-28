@@ -22,7 +22,7 @@ class SettingsManager:
             setting.value = value
         else:
             self._db.add(AppSetting(key=key, value=value))
-        self._db.commit()
+        self._db.flush()
 
     def _get_from_db(self, key: str):
         setting = self._db.query(AppSetting).filter_by(key=key).first()

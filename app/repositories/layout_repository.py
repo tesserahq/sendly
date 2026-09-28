@@ -1,5 +1,5 @@
-from typing import List, Optional
 from uuid import UUID
+
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.layout import Layout
@@ -11,7 +11,7 @@ class LayoutRepository(SoftDeleteRepository[Layout]):
     def __init__(self, db: Session):
         super().__init__(db, Layout)
 
-    def get_layout(self, layout_id: UUID) -> Optional[Layout]:
+    def get_layout(self, layout_id: UUID) -> Layout | None:
         return (
             self.db.query(Layout)
             .options(selectinload(Layout.created_by))
@@ -19,7 +19,7 @@ class LayoutRepository(SoftDeleteRepository[Layout]):
             .first()
         )
 
-    def get_layout_by_alias(self, alias: str) -> Optional[Layout]:
+    def get_layout_by_alias(self, alias: str) -> Layout | None:
         return (
             self.db.query(Layout)
             .options(selectinload(Layout.created_by))
@@ -34,24 +34,24 @@ class LayoutRepository(SoftDeleteRepository[Layout]):
             .order_by(Layout.created_at.desc())
         )
 
-    def get_layouts(self, skip: int = 0, limit: int = 100) -> List[Layout]:
+    def get_layouts(self, skip: int = 0, limit: int = 100) -> list[Layout]:
         return self.db.query(Layout).offset(skip).limit(limit).all()
 
     def create_layout(
-        self, layout: LayoutCreate, created_by_id: Optional[UUID] = None
+        self, layout: LayoutCreate, created_by_id: UUID | None = None
     ) -> Layout:
         db_layout = Layout(**layout.model_dump(), created_by_id=created_by_id)
         self.db.add(db_layout)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(db_layout)
         return db_layout
 
-    def update_layout(self, layout_id: UUID, layout: LayoutUpdate) -> Optional[Layout]:
+    def update_layout(self, layout_id: UUID, layout: LayoutUpdate) -> Layout | None:
         db_layout = self.db.query(Layout).filter(Layout.id == layout_id).first()
         if db_layout:
             for key, value in layout.model_dump(exclude_unset=True).items():
                 setattr(db_layout, key, value)
-            self.db.commit()
+            self.db.flush()
             self.db.refresh(db_layout)
         return db_layout
 

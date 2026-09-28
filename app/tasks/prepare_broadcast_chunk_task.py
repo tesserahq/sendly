@@ -9,12 +9,12 @@ same way: marked prepared, no Email row, no render attempted).
 from __future__ import annotations
 
 import logging
-from typing import List
 from uuid import UUID
 
 from app.config import get_settings
 from app.constants.email import EmailStatus
 from app.core.celery_app import celery_app
+from app.db import session_scope
 from app.providers.base import EmailCreateRequest
 from app.providers.registry import get_default_provider
 from app.repositories.broadcast_repository import BroadcastRepository
@@ -33,20 +33,19 @@ from app.services.email_rendering_service import (
     TemplateNotFoundError,
     TemplateSyntaxError,
 )
-from app.utils.db.db_session_helper import db_session
 
 logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name="app.tasks.prepare_broadcast_chunk_task")
 def prepare_broadcast_chunk_task(
-    broadcast_batch_id: str, recipient_ids: List[str]
+    broadcast_batch_id: str, recipient_ids: list[str]
 ) -> None:
-    with db_session() as db:
+    with session_scope() as db:
         _prepare_chunk(db, UUID(broadcast_batch_id), [UUID(i) for i in recipient_ids])
 
 
-def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> None:
+def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: list[UUID]) -> None:
     broadcast_repo = BroadcastRepository(db)
     suppression_repo = SuppressionRepository(db)
     email_repo = EmailRepository(db)
@@ -80,8 +79,8 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: List[UUID]) -> N
             batch.project_id, recipient_emails
         )
 
-    prepared_ids: List[UUID] = []
-    created_email_ids: List[UUID] = []
+    prepared_ids: list[UUID] = []
+    created_email_ids: list[UUID] = []
     message_stream = settings.postmark_broadcast_stream_id or None
 
     for recipient in recipients:

@@ -33,10 +33,10 @@ class TestIncrementPreparedCount:
         repo = BroadcastRepository(db)
         batch = _make_batch(db)
 
-        repo.increment_prepared_count(batch.id, 1)
-        repo.increment_prepared_count(batch.id, 1)
+        assert repo.increment_prepared_count(batch.id, 1) == 1
+        assert batch.prepared_count == 1
+        assert repo.increment_prepared_count(batch.id, 1) == 2
 
-        db.refresh(batch)
         assert batch.prepared_count == 2
 
     def test_zero_or_negative_is_a_no_op(self, db):
@@ -59,7 +59,6 @@ class TestMaybeMarkFinished:
         result = repo.maybe_mark_finished(batch.id, pending_send_count=0)
 
         assert result is True
-        db.refresh(batch)
         assert batch.finished is True
 
     def test_does_not_mark_finished_while_prepare_incomplete(self, db):
@@ -103,7 +102,6 @@ class TestIncrementDeliveryCounter:
         repo.increment_delivery_counter(batch.id, EmailStatus.DELIVERED)
         repo.increment_delivery_counter(batch.id, EmailStatus.DELIVERED)
 
-        db.refresh(batch)
         assert batch.delivered_count == 2
 
     def test_is_a_no_op_for_untracked_statuses(self, db):
@@ -138,7 +136,6 @@ class TestIncrementEngagementCounter:
         repo.increment_engagement_counter(batch.id, "opened")
         repo.increment_engagement_counter(batch.id, "opened")
 
-        db.refresh(batch)
         assert batch.opened_count == 2
         assert batch.clicked_count == 0
 
