@@ -97,5 +97,4 @@ class SuppressionRepository(SoftDeleteRepository[EmailSuppression]):
         if not existing:
             return False
         self.db.delete(existing)
-        self.db.flush()
         return True

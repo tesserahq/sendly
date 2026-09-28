@@ -57,6 +57,12 @@ db_manager = DatabaseManager(
 engine = db_manager.engine
 SessionLocal = db_manager.SessionLocal
 
+# tessera_sdk's DatabaseManager creates sessions with autoflush=False. Restore
+# SQLAlchemy's default so a query always sees the pending changes made earlier
+# in the same execution, without explicit flush() calls. Remove this once the
+# SDK default changes.
+SessionLocal.configure(autoflush=True)
+
 
 @contextmanager
 def session_scope() -> Iterator[Session]:
