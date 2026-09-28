@@ -404,7 +404,6 @@ class EmailRepository(SoftDeleteRepository[Email]):
         db_event = self.db.query(EmailEvent).filter(EmailEvent.id == event_id).first()
         if db_event:
             self.db.delete(db_event)
-            self.db.flush()
             return True
         return False
 
