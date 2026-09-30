@@ -1,0 +1,146 @@
+name: Release
+
+# Production promotion is driven by published GitHub Releases, not by merges to
+# main (mylinden-tech/infra#41). Merges only run CI. Publishing release vX.Y.Z
+# builds that commit once, pins its digest in mylinden-tech/infra through an
+# auto-merging pull request, and the infra deploy workflow rolls it out.
+#
+# This repository is public, so it runs on GitHub-hosted runners (free for
+# public repositories). Never point it at the mylinden-tech self-hosted runner:
+# fork pull requests could run code on that host.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to promote (vMAJOR.MINOR.PATCH); break-glass and rollback
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and promote the release
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: mustela/sendly
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Check out infrastructure repository
+        uses: actions/checkout@v7
+        with:
+          repository: mylinden-tech/infra
+          ref: main
+          path: infra
+          token: ${{ secrets.INFRA_REPO_TOKEN }}
+
+      - name: Verify the release
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./infra/scripts/verify-release.sh "$GITHUB_REPOSITORY" "$TAG" "Python checks" >>"$GITHUB_OUTPUT"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Reuse the release image if it already exists
+        id: existing
+        env:
+          SHA: ${{ steps.verify.outputs.release_sha }}
+        run: |
+          if ! docker buildx imagetools inspect "$IMAGE:$TAG" >/dev/null 2>&1; then
+            echo "reuse=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          revision=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Image}}' |
+            jq -r 'if has("config") then .config.Labels["org.opencontainers.image.revision"] else (to_entries[0].value.config.Labels["org.opencontainers.image.revision"]) end')
+          if [ "$revision" != "$SHA" ]; then
+            echo "$IMAGE:$TAG exists but was built from $revision, not $SHA" >&2
+            exit 1
+          fi
+          echo "reuse=true" >>"$GITHUB_OUTPUT"
+
+      - name: Check out the release commit
+        if: steps.existing.outputs.reuse != 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.verify.outputs.release_sha }}
+          path: source
+
+      - name: Extract metadata (tags, labels) for Docker
+        if: steps.existing.outputs.reuse != 'true'
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=sha-${{ steps.verify.outputs.release_sha }}
+            type=raw,value=${{ env.TAG }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.verify.outputs.release_sha }}
+            org.opencontainers.image.version=${{ env.TAG }}
+
+      - name: Build Docker image
+        if: steps.existing.outputs.reuse != 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: source
+          file: source/Dockerfile
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Smoke test the built image
+        # Catches app import/dependency errors that the full development
+        # environment used by the test suite can mask.
+        if: steps.existing.outputs.reuse != 'true'
+        run: docker run --rm "$IMAGE:$TAG" python -c "import app.main"
+
+      - name: Push Docker image
+        # Pushes the exact image that was just smoke tested.
+        if: steps.existing.outputs.reuse != 'true'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          printf '%s\n' "$TAGS" | while IFS= read -r tag; do
+            [ -n "$tag" ] && docker push "$tag"
+          done
+
+      - name: Resolve immutable image digest
+        id: image
+        run: |
+          digest=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          case "$digest" in
+            sha256:????????????????????????????????????????????????????????????????) ;;
+            *) echo "registry returned an invalid digest" >&2; exit 1 ;;
+          esac
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+
+      - name: Promote to production
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+          SHA: ${{ steps.verify.outputs.release_sha }}
+        run: |
+          cd infra
+          git config user.name "sendly-release-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          ./scripts/promote-release.sh \
+            --app sendly-api --title "Sendly API" --image "$IMAGE" \
+            --digest "$DIGEST" --tag "$TAG" --sha "$SHA" \
+            --release-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG" \
+            --source "$GITHUB_REPOSITORY" \
+            production/apps/sendly-api/Dockerfile \
+            production/stacks/sendly/compose.yaml
