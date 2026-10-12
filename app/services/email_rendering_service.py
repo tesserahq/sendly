@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.models.template import Template
 from app.providers.base import EmailCreateRequest
+from app.repositories.layout_repository import LayoutRepository
 from app.repositories.template_repository import TemplateRepository
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,9 @@ logger = logging.getLogger(__name__)
 
 class ContentOptions(Protocol):
     """Structural shape shared by EmailCreateRequest and ContentSpec — the
-    fields `validate()` needs, regardless of which caller passes them in."""
+    fields `validate()` needs, regardless of which caller passes them in.
+    (ContentSpec additionally carries layout_id/layout_alias, which
+    `validate()` reads when present.)"""
 
     template_id: Optional[Any]
     template_alias: Optional[str]
@@ -46,6 +49,13 @@ class RenderingError(Exception):
 
 class TemplateNotFoundError(RenderingError):
     """Raised when template_id/template_alias doesn't resolve to a Template."""
+
+
+class LayoutNotFoundError(RenderingError):
+    """Raised when an inline layout_id/layout_alias doesn't resolve to a
+    Layout (missing or soft-deleted). Unlike a template's dangling layout,
+    which degrades to sending without one, an explicitly requested layout
+    must exist — nothing goes out half-styled."""
 
 
 class MissingFieldError(RenderingError):
@@ -68,15 +78,58 @@ class RenderedContent:
     reply_to: Optional[str] = None
 
 
+@dataclass
+class RenderedBody:
+    html: str
+    subject: str
+
+
 class EmailRenderingService:
     def __init__(self, db: Session):
         self.db = db
 
-    def resolve(self, req: EmailCreateRequest) -> RenderedContent:
+    def resolve(
+        self, req: EmailCreateRequest, layout_html: Optional[str] = None
+    ) -> RenderedContent:
+        """`layout_html` is an already-resolved layout to wrap inline html in —
+        the broadcast prepare stage passes the snapshot frozen at accept time
+        (ContentSpec.layout_html). It never applies to templates, which carry
+        their own layout."""
         using_template = req.template_id is not None or req.template_alias is not None
         if using_template:
             return self.resolve_template(req)
-        return self.resolve_inline(req)
+        return self.resolve_inline(req, layout_html=layout_html)
+
+    def render_content(
+        self,
+        html: str,
+        subject: str,
+        variables: dict[str, Any],
+        layout_html: Optional[str] = None,
+    ) -> RenderedBody:
+        """Render a body (wrapped in `layout_html`, passed as `content`, when
+        given) and a subject with the same variables. The one rendering path
+        shared by templates, inline sends, and previews, so they can't drift."""
+        body = self.render(html, **variables)
+        if layout_html is not None:
+            body = self.render(layout_html, content=body, **variables)
+        return RenderedBody(html=body, subject=self.render(subject, **variables))
+
+    def resolve_layout_html(
+        self, layout_id: Optional[Any], layout_alias: Optional[str]
+    ) -> Optional[str]:
+        """Resolve an inline layout reference to its html, or None when no
+        reference was given. id wins over alias, matching template lookup."""
+        if layout_id is None and layout_alias is None:
+            return None
+        repo = LayoutRepository(self.db)
+        if layout_id is not None:
+            layout = repo.get_layout(layout_id)
+        else:
+            layout = repo.get_layout_by_alias(layout_alias)
+        if layout is None:
+            raise LayoutNotFoundError("Layout not found.")
+        return layout.html
 
     def validate(self, content: ContentOptions) -> None:
         """Validate content-option requirements without rendering.
@@ -94,9 +147,19 @@ class EmailRenderingService:
         )
         using_inline = content.html is not None
 
+        using_layout = (
+            getattr(content, "layout_id", None) is not None
+            or getattr(content, "layout_alias", None) is not None
+        )
+
         if using_template and using_inline:
             raise ConflictingContentError(
                 "Cannot specify both a template reference and inline html."
+            )
+        if using_template and using_layout:
+            raise ConflictingContentError(
+                "A layout reference can only be used with inline html; a "
+                "template uses its own layout."
             )
         if not using_template and not using_inline:
             raise MissingFieldError(
@@ -125,22 +188,21 @@ class EmailRenderingService:
     def resolve_template(self, req: EmailCreateRequest) -> RenderedContent:
         template = self._fetch_template(req)
 
-        if template.layout:
-            rendered_content = self.render(template.html, **req.template_variables)
-            html = self.render(
-                template.layout.html, content=rendered_content, **req.template_variables
+        if template.layout is None and template.layout_id is not None:
+            # layout_id is set but layout is None — it was soft-deleted
+            logger.warning(
+                "Template %s references layout_id %s which no longer exists; "
+                "sending without layout.",
+                template.id,
+                template.layout_id,
             )
-        else:
-            if template.layout_id is not None:
-                # layout_id is set but layout is None — it was soft-deleted
-                logger.warning(
-                    "Template %s references layout_id %s which no longer exists; "
-                    "sending without layout.",
-                    template.id,
-                    template.layout_id,
-                )
-            html = self.render(template.html, **req.template_variables)
-        subject = self.render(template.subject, **req.template_variables)
+        rendered = self.render_content(
+            template.html,
+            template.subject,
+            req.template_variables,
+            layout_html=template.layout.html if template.layout else None,
+        )
+        html, subject = rendered.html, rendered.subject
 
         from_email = str(req.from_email or template.from_email or "")
         if not from_email:
@@ -156,7 +218,9 @@ class EmailRenderingService:
             html=html, subject=subject, from_email=from_email, reply_to=reply_to
         )
 
-    def resolve_inline(self, req: EmailCreateRequest) -> RenderedContent:
+    def resolve_inline(
+        self, req: EmailCreateRequest, layout_html: Optional[str] = None
+    ) -> RenderedContent:
         if not req.from_email:
             raise MissingFieldError(
                 "from_email is required when sending with inline html."
@@ -168,10 +232,12 @@ class EmailRenderingService:
         if not req.html:
             raise MissingFieldError("html is required when not using a template.")
 
-        html = self.render(req.html, **req.template_variables)
+        rendered = self.render_content(
+            req.html, req.subject, req.template_variables, layout_html=layout_html
+        )
         return RenderedContent(
-            html=html,
-            subject=req.subject,
+            html=rendered.html,
+            subject=rendered.subject,
             from_email=str(req.from_email),
             reply_to=str(req.reply_to) if req.reply_to else None,
         )

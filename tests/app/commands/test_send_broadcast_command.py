@@ -6,6 +6,8 @@ its own publisher tests — so these tests stay focused on the accept stage.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -17,7 +19,9 @@ from app.models.broadcast_batch import BroadcastBatch
 from app.models.broadcast_recipient import BroadcastRecipient
 from app.models.email import Email
 from app.models.email_suppression import EmailSuppression
-from app.schemas.broadcast import BroadcastCreateRequest
+from app.repositories.layout_repository import LayoutRepository
+from app.schemas.broadcast import BroadcastCreateRequest, ContentSpec
+from app.schemas.layout import LayoutUpdate
 
 
 @pytest.fixture(autouse=True)
@@ -406,3 +410,90 @@ class TestGlobalBroadcast:
         global_batch = SendBroadcastCommand(db).execute(global_req)
 
         assert project_batch.id != global_batch.id
+
+
+class TestInlineLayout:
+    """An inline broadcast can reference a layout. It's resolved once at
+    accept and frozen into the content spec, so prepare never re-reads it."""
+
+    def test_layout_id_is_frozen_into_content_spec(self, db, setup_layout):
+        req = _make_request(uuid4(), layout_id=setup_layout.id)
+
+        batch = SendBroadcastCommand(db).execute(req)
+
+        assert batch.content_spec["layout_id"] == str(setup_layout.id)
+        assert batch.content_spec["layout_html"] == setup_layout.html
+
+    def test_layout_alias_is_frozen_into_content_spec(self, db, setup_layout):
+        req = _make_request(uuid4(), layout_alias=setup_layout.alias)
+
+        batch = SendBroadcastCommand(db).execute(req)
+
+        assert batch.content_spec["layout_html"] == setup_layout.html
+
+    def test_no_layout_leaves_snapshot_empty(self, db):
+        batch = SendBroadcastCommand(db).execute(_make_request(uuid4()))
+
+        assert batch.content_spec["layout_html"] is None
+
+    def test_unknown_layout_is_rejected(self, db):
+        req = _make_request(uuid4(), layout_id=uuid4())
+
+        with pytest.raises(HTTPException) as exc:
+            SendBroadcastCommand(db).execute(req)
+
+        assert exc.value.status_code == 404
+        assert db.query(BroadcastBatch).count() == 0
+
+    def test_soft_deleted_layout_is_rejected(self, db, setup_layout):
+        LayoutRepository(db).delete_layout(setup_layout.id)
+        req = _make_request(uuid4(), layout_id=setup_layout.id)
+
+        with pytest.raises(HTTPException) as exc:
+            SendBroadcastCommand(db).execute(req)
+
+        assert exc.value.status_code == 404
+
+    def test_layout_with_template_is_rejected(self, db, setup_layout):
+        req = _make_request(
+            uuid4(), html=None, template_alias="welcome", layout_id=setup_layout.id
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            SendBroadcastCommand(db).execute(req)
+
+        assert exc.value.status_code == 400
+
+    def test_retry_after_layout_edit_returns_original_batch(self, db, setup_layout):
+        req = _make_request(
+            uuid4(), layout_id=setup_layout.id, idempotency_key="layout-key"
+        )
+        first = SendBroadcastCommand(db).execute(req)
+        original_html = setup_layout.html
+
+        LayoutRepository(db).update_layout(
+            setup_layout.id, LayoutUpdate(html="<main>${content}</main>")
+        )
+        second = SendBroadcastCommand(db).execute(req)
+
+        assert second.id == first.id
+        assert second.content_spec["layout_html"] == original_html
+
+    def test_fingerprint_without_layout_matches_pre_layout_shape(self):
+        # Requests that don't use a layout must fingerprint exactly as they
+        # did before the layout fields existed, so an idempotent retry that
+        # straddles the deploy doesn't 409.
+        req = _make_request(uuid4())
+        spec = ContentSpec.from_request(req)
+        legacy_content = spec.model_dump(mode="json")
+        for key in ("layout_id", "layout_alias", "layout_html"):
+            del legacy_content[key]
+        legacy_payload = {
+            "content_spec": legacy_content,
+            "recipients": [r.model_dump(mode="json") for r in req.recipients],
+        }
+        legacy = hashlib.sha256(
+            json.dumps(legacy_payload, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+
+        assert SendBroadcastCommand._fingerprint(spec, req.recipients) == legacy

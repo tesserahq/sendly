@@ -11,9 +11,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.providers.base import EmailCreateRequest
+from app.schemas.broadcast import ContentSpec
 from app.services.email_rendering_service import (
     ConflictingContentError,
     EmailRenderingService,
+    LayoutNotFoundError,
     MissingFieldError,
     TemplateNotFoundError,
     TemplateSyntaxError,
@@ -292,3 +294,118 @@ class TestValidate:
             service = EmailRenderingService(db=MagicMock())
             req = _make_req(template_id="00000000-0000-0000-0000-000000000000")
             service.validate(req)  # does not raise
+
+
+class TestInlineLayout:
+    """Inline html wrapped in an already-resolved layout (the broadcast
+    snapshot), plus Mako-rendered inline subjects — parity with templates."""
+
+    def test_renders_inline_subject_with_variables(self):
+        service = EmailRenderingService(db=MagicMock())
+        req = _make_req(
+            html="<p>hi</p>",
+            subject="Hi ${name}",
+            from_email="from@example.com",
+            template_variables={"name": "Alice"},
+        )
+        assert service.resolve_inline(req).subject == "Hi Alice"
+
+    def test_wraps_inline_html_in_layout(self):
+        service = EmailRenderingService(db=MagicMock())
+        req = _make_req(
+            html="<p>Hi ${name}</p>",
+            subject="Subject",
+            from_email="from@example.com",
+            template_variables={"name": "Alice"},
+        )
+        result = service.resolve(
+            req,
+            layout_html="<div class='wrap'>${content}<footer>${name}</footer></div>",
+        )
+        assert result.html == (
+            "<div class='wrap'><p>Hi Alice</p><footer>Alice</footer></div>"
+        )
+
+    def test_inline_without_layout_is_unwrapped(self):
+        service = EmailRenderingService(db=MagicMock())
+        req = _make_req(
+            html="<p>hi</p>", subject="Subject", from_email="from@example.com"
+        )
+        assert service.resolve(req).html == "<p>hi</p>"
+
+    def test_layout_html_is_ignored_for_templates(self):
+        template = _make_template()
+        with patch(
+            "app.services.email_rendering_service.TemplateRepository"
+        ) as MockRepo:
+            MockRepo.return_value.get_template_by_alias.return_value = template
+            service = EmailRenderingService(db=MagicMock())
+            req = _make_req(template_alias="welcome", template_variables={"name": "A"})
+            result = service.resolve(req, layout_html="<div>${content}</div>")
+        assert result.html == "<p>Hello A</p>"
+
+    def test_missing_variable_in_subject_raises(self):
+        service = EmailRenderingService(db=MagicMock())
+        req = _make_req(
+            html="<p>hi</p>", subject="Hi ${name}", from_email="from@example.com"
+        )
+        with pytest.raises(MissingFieldError, match="name"):
+            service.resolve_inline(req)
+
+
+class TestResolveLayoutHtml:
+    def test_no_reference_returns_none(self):
+        with patch("app.services.email_rendering_service.LayoutRepository") as MockRepo:
+            service = EmailRenderingService(db=MagicMock())
+            assert service.resolve_layout_html(None, None) is None
+        MockRepo.assert_not_called()
+
+    def test_resolves_by_id(self):
+        with patch("app.services.email_rendering_service.LayoutRepository") as MockRepo:
+            MockRepo.return_value.get_layout.return_value = SimpleNamespace(
+                html="<div>${content}</div>"
+            )
+            service = EmailRenderingService(db=MagicMock())
+            assert service.resolve_layout_html("id", None) == "<div>${content}</div>"
+
+    def test_resolves_by_alias(self):
+        with patch("app.services.email_rendering_service.LayoutRepository") as MockRepo:
+            MockRepo.return_value.get_layout_by_alias.return_value = SimpleNamespace(
+                html="<div>${content}</div>"
+            )
+            service = EmailRenderingService(db=MagicMock())
+            assert service.resolve_layout_html(None, "brand") == "<div>${content}</div>"
+
+    def test_id_wins_over_alias(self):
+        with patch("app.services.email_rendering_service.LayoutRepository") as MockRepo:
+            MockRepo.return_value.get_layout.return_value = SimpleNamespace(
+                html="by-id"
+            )
+            service = EmailRenderingService(db=MagicMock())
+            assert service.resolve_layout_html("id", "brand") == "by-id"
+        MockRepo.return_value.get_layout_by_alias.assert_not_called()
+
+    def test_missing_layout_raises(self):
+        with patch("app.services.email_rendering_service.LayoutRepository") as MockRepo:
+            MockRepo.return_value.get_layout.return_value = None
+            service = EmailRenderingService(db=MagicMock())
+            with pytest.raises(LayoutNotFoundError):
+                service.resolve_layout_html("id", None)
+
+
+class TestValidateLayout:
+    def test_layout_with_template_raises(self):
+        service = EmailRenderingService(db=MagicMock())
+        spec = ContentSpec(template_alias="welcome", layout_alias="brand")
+        with pytest.raises(ConflictingContentError):
+            service.validate(spec)
+
+    def test_layout_with_inline_html_passes(self):
+        service = EmailRenderingService(db=MagicMock())
+        spec = ContentSpec(
+            html="<p>hi</p>",
+            subject="Subject",
+            from_email="from@example.com",
+            layout_alias="brand",
+        )
+        service.validate(spec)  # does not raise

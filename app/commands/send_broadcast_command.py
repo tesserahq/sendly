@@ -29,6 +29,7 @@ from app.services.broadcast_prepare_publisher import BroadcastPreparePublisher
 from app.services.email_rendering_service import (
     ConflictingContentError,
     EmailRenderingService,
+    LayoutNotFoundError,
     MissingFieldError,
     TemplateNotFoundError,
 )
@@ -75,6 +76,17 @@ class SendBroadcastCommand:
                         ),
                     )
                 return existing
+
+        # Freeze the layout once, after the idempotency check: a retry of an
+        # already-accepted request returns that batch untouched even if the
+        # layout was since edited or deleted, and a new batch's prepare
+        # chunks all wrap with this one snapshot (see ContentSpec.layout_html).
+        try:
+            content_spec.layout_html = self.rendering.resolve_layout_html(
+                content_spec.layout_id, content_spec.layout_alias
+            )
+        except LayoutNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
         emails = [str(recipient.email) for recipient in req.recipients]
         if req.project_id is None:
@@ -135,8 +147,16 @@ class SendBroadcastCommand:
     def _fingerprint(
         content_spec: ContentSpec, recipients: List[BroadcastRecipient]
     ) -> str:
+        # The fingerprint identifies the request, not what it resolved to, so
+        # the layout snapshot is excluded (a retry after a layout edit is
+        # still the same request). Unset layout references are dropped too,
+        # keeping fingerprints of requests that predate them unchanged.
+        content = content_spec.model_dump(mode="json", exclude={"layout_html"})
+        for key in ("layout_id", "layout_alias"):
+            if content[key] is None:
+                del content[key]
         payload = {
-            "content_spec": content_spec.model_dump(mode="json"),
+            "content_spec": content,
             "recipients": [r.model_dump(mode="json") for r in recipients],
         }
         canonical = json.dumps(payload, sort_keys=True, default=str)
