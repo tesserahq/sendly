@@ -312,3 +312,34 @@ class TestRecipientToEmailLink:
             .first()
         )
         assert recipient_row.email_id is None
+
+
+class TestLayoutSnapshot:
+    def test_wraps_with_frozen_layout_without_re_resolving(self, real_db):
+        # layout_id points at no row at all: if prepare re-resolved the
+        # reference instead of using the accept-time snapshot, this recipient
+        # would be skipped (or sent unwrapped).
+        batch = _make_batch(
+            real_db,
+            uuid4(),
+            subject="Hello ${first_name}",
+            layout_id=str(uuid4()),
+            layout_alias=None,
+            layout_html="<div class='brand'>${content}</div>",
+        )
+        recipient = _make_recipient(real_db, batch)
+
+        with patch(
+            "app.tasks.prepare_broadcast_chunk_task.get_default_provider"
+        ) as mock_provider:
+            mock_provider.return_value.provider_id = "postmark"
+            prepare_broadcast_chunk_task(str(batch.id), [str(recipient.id)])
+
+        real_db.expire_all()
+        email = (
+            real_db.query(Email)
+            .filter(Email.to_email == "recipient@example.com")
+            .first()
+        )
+        assert email.body == "<div class='brand'><p>Hi Alice</p></div>"
+        assert email.subject == "Hello Alice"

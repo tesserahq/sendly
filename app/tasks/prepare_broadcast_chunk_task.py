@@ -112,7 +112,8 @@ def _prepare_chunk(db, broadcast_batch_id: UUID, recipient_ids: list[UUID]) -> N
         )
 
         try:
-            rendered = rendering.resolve(req)
+            # Wrap with the layout frozen at accept, never a fresh lookup.
+            rendered = rendering.resolve(req, layout_html=content_spec.layout_html)
         except (MissingFieldError, TemplateNotFoundError, TemplateSyntaxError) as e:
             logger.warning(
                 "Skipping recipient %s in batch %s: rendering failed: %s",

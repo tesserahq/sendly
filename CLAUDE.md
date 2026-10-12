@@ -63,8 +63,10 @@ Scoped via `project_id` (UUID) on `Email`, `BroadcastBatch`, and suppressions. R
 `EmailRenderingService.resolve(req)` is used by both `SendEmailCommand` and the broadcast prepare task:
 
 - `template_id` or `template_alias` set → load `Template` from DB, render `html` and `subject` with Mako, and wrap in the template's `Layout` (passed as `content`) if one is attached. Template defaults fill `from_email` / `reply_to`.
-- Otherwise → inline `html` rendered with Mako using `template_variables`.
-- Template and inline `html` are mutually exclusive (`ConflictingContentError`).
+- Otherwise → inline `html` and `subject` rendered with Mako using `template_variables`, optionally wrapped in a layout (`resolve(req, layout_html=...)`).
+- Both paths go through `render_content()` (body → layout wrap as `content` → subject), the single rendering operation also meant for previews.
+- Template and inline `html` are mutually exclusive (`ConflictingContentError`). A broadcast's `layout_id`/`layout_alias` is only valid with inline `html`.
+- Inline broadcast layouts are resolved **once at accept** (`SendBroadcastCommand`) and frozen into `ContentSpec.layout_html`; the prepare stage wraps with that snapshot and never re-reads the layout. A missing/soft-deleted layout rejects the broadcast (404) — unlike a template's dangling layout, which logs a warning and sends unwrapped. The snapshot is excluded from the idempotency fingerprint.
 - Raises plain exceptions (not `HTTPException`) because it runs in the worker too.
 
 ## Background worker (Celery + Redis)

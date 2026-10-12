@@ -40,6 +40,10 @@ class BroadcastCreateRequest(BaseModel):
     attachments: List[Attachment] = Field(default_factory=list)
     template_id: Optional[UUID] = None
     template_alias: Optional[str] = None
+    layout_id: Optional[UUID] = None
+    """Layout to wrap inline `html` in. Only valid with inline html — a
+    template uses its own layout. Resolved once at accept time."""
+    layout_alias: Optional[str] = None
     template_variables: Dict[str, Any] = Field(default_factory=dict)
     custom_headers: Dict[str, str] = Field(default_factory=dict)
     idempotency_key: Optional[str] = None
@@ -61,6 +65,14 @@ class ContentSpec(BaseModel):
     text: Optional[str] = None
     template_id: Optional[str] = None
     template_alias: Optional[str] = None
+    layout_id: Optional[str] = None
+    layout_alias: Optional[str] = None
+    # The resolved layout html, frozen once at accept time (see
+    # SendBroadcastCommand) so every prepare chunk wraps with the same
+    # version even if the layout is edited mid-send, and the batch alone is
+    # enough to reproduce what was sent. layout_id/layout_alias are kept for
+    # provenance only; prepare never re-resolves them.
+    layout_html: Optional[str] = None
     template_variables: Dict[str, Any] = Field(default_factory=dict)
     subject: Optional[str] = None
     from_email: Optional[str] = None
@@ -77,6 +89,8 @@ class ContentSpec(BaseModel):
             text=req.text,
             template_id=str(req.template_id) if req.template_id else None,
             template_alias=req.template_alias,
+            layout_id=str(req.layout_id) if req.layout_id else None,
+            layout_alias=req.layout_alias,
             template_variables=req.template_variables,
             subject=req.subject,
             from_email=req.from_email,

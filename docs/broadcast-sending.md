@@ -14,6 +14,8 @@ Sendly's broadcast feature fans a single piece of content out to a list of recip
   "html": "<p>Hi ${first_name}, ...</p>",
   "template_id": null,
   "template_alias": null,
+  "layout_id": "3f1c...-uuid",
+  "layout_alias": null,
   "template_variables": {},
   "custom_headers": {},
   "idempotency_key": "campaign-2026-07-launch",
@@ -110,6 +112,14 @@ The existing `/emails` listing, extended with `batch_id` (exact match) and `tag`
 - **Key seen before, same fingerprint** → returns the original batch's `{batch_id, queued_count, suppressed_count}` without creating anything new.
 - **Key seen before, different fingerprint** → `409 Conflict`.
 - **Key not seen** → proceeds normally.
+
+The fingerprint is over the *request*, not what it resolved to: `content_spec.layout_html` (the frozen layout snapshot, below) is excluded, and unset `layout_id`/`layout_alias` are dropped so requests that don't use a layout fingerprint exactly as they did before those fields existed. A retry after the layout was edited is therefore still the same request.
+
+## Inline layouts
+
+`layout_id` / `layout_alias` wrap inline `html` in a Sendly layout (the rendered body is passed to the layout as `content`). They're only valid with inline `html` — combined with a template reference the request is rejected (`400`), since a template uses its own layout. Inline `subject` is rendered with Mako, same as a template's.
+
+The layout is resolved **once, at accept time, after the idempotency check**, and its html is frozen into `content_spec.layout_html`. The prepare stage wraps every recipient with that snapshot and never re-reads the layout, so a layout edited mid-send can't produce a batch with mixed versions, and the batch alone is enough to reproduce what was sent. A missing or soft-deleted layout rejects the broadcast with `404` before anything is persisted — stricter than a template whose layout was deleted, which logs a warning and sends unwrapped.
 
 The `(project_id, idempotency_key)` partial unique index (non-null keys only) on `broadcast_batches` is the durable backstop for this check.
 
@@ -313,7 +323,7 @@ One row per accepted `POST /broadcasts/send` request — the durable idempotency
 | `batch_id` | `string` | Server-generated UUID string — the *public* identifier callers use to query (`GET /broadcasts/{batch_id}`). Unique per `(project_id, batch_id)`. |
 | `idempotency_key` | `string`, nullable | Caller-supplied. Unique per `(project_id, idempotency_key)` when non-null. |
 | `request_fingerprint` | `string` | SHA-256 of the canonical `(content_spec, recipients)` payload — used to detect a retried idempotency key with *different* content (→ `409`). |
-| `content_spec` | `jsonb` | The shared, not-yet-rendered content options (`html`/`text`/`template_id`/`template_alias`/`template_variables`/`subject`/`from_email`/`custom_headers`/`attachments`/`tags`/`metadata`). Stored as plain JSON, but the read/write boundary is the typed `app.schemas.broadcast.ContentSpec` — `SendBroadcastCommand` writes `ContentSpec.from_request(req).model_dump(mode="json")`, `prepare_broadcast_chunk_task` reads it back via `ContentSpec.model_validate(batch.content_spec)`. Avoids `dict.get("some_key")` string lookups scattered across the pipeline. |
+| `content_spec` | `jsonb` | The shared, not-yet-rendered content options (`html`/`text`/`template_id`/`template_alias`/`layout_id`/`layout_alias`/`layout_html` (accept-time layout snapshot)/`template_variables`/`subject`/`from_email`/`custom_headers`/`attachments`/`tags`/`metadata`). Stored as plain JSON, but the read/write boundary is the typed `app.schemas.broadcast.ContentSpec` — `SendBroadcastCommand` writes `ContentSpec.from_request(req).model_dump(mode="json")`, `prepare_broadcast_chunk_task` reads it back via `ContentSpec.model_validate(batch.content_spec)`. Avoids `dict.get("some_key")` string lookups scattered across the pipeline. |
 | `queued_count`, `suppressed_count` | `int` | Fixed at accept time — the counts returned in the `POST /broadcasts/send` response and later re-shown by `GET /broadcasts/{batch_id}`. |
 | `opened_count`, `clicked_count` | `int`, default `0` | Exact, first-occurrence rollups — incremented once per email via `BroadcastRepository.increment_engagement_counter`, driven by `WebhookOutcome.first_opened`/`first_clicked` rather than by `Email.status`. See [Engagement timestamps and counters](#engagement-timestamps-and-counters). |
 | `delivered_count`, `bounced_count`, `complained_count` | `int`, default `0` | Rollups of the first time an email reaches that terminal-ish status — see `BroadcastRepository.increment_delivery_counter`. |
