@@ -63,8 +63,10 @@ Scoped via `project_id` (UUID) on `Email`, `BroadcastBatch`, and suppressions. R
 `EmailRenderingService.resolve(req)` is used by both `SendEmailCommand` and the broadcast prepare task:
 
 - `template_id` or `template_alias` set → load `Template` from DB, render `html` and `subject` with Mako, and wrap in the template's `Layout` (passed as `content`) if one is attached. Template defaults fill `from_email` / `reply_to`.
-- Otherwise → inline `html` rendered with Mako using `template_variables`.
-- Template and inline `html` are mutually exclusive (`ConflictingContentError`).
+- Otherwise → inline `html` and `subject` rendered with Mako using `template_variables`, optionally wrapped in a layout (`resolve(req, layout_html=...)`).
+- Both paths go through `render_content()` (body → layout wrap as `content` → subject), the single rendering operation, also behind `POST /render` (side-effect-free preview; layout read grant).
+- Template and inline `html` are mutually exclusive (`ConflictingContentError`). A broadcast's `layout_id`/`layout_alias` is only valid with inline `html`.
+- Inline broadcast layouts are resolved **once at accept** (`SendBroadcastCommand`) and frozen into `ContentSpec.layout_html`; the prepare stage wraps with that snapshot and never re-reads the layout. A missing/soft-deleted layout rejects the broadcast (404) — unlike a template's dangling layout, which logs a warning and sends unwrapped. The snapshot is excluded from the idempotency fingerprint.
 - Raises plain exceptions (not `HTTPException`) because it runs in the worker too.
 
 ## Background worker (Celery + Redis)
@@ -115,3 +117,10 @@ Dispatch is transactional-outbox style: a synchronous fast-path `.delay()` right
 - Soft-delete filter is applied globally via SQLAlchemy event listener; bypass with `.execution_options(skip_soft_delete_filter=True)`
 - A template whose layout was soft-deleted renders without the layout and logs a warning
 - Suppression is checked three times (accept, prepare, send). A recipient suppressed mid-flight ends as `suppressed`, not `failed`.
+
+## Database migrations
+
+- Migrations run only in the API's `start.sh`. During a deploy, old and new containers overlap (the API rolls; workers deploy separately), so every migration must work with the previous release's code.
+- One release: additive changes (nullable column or one with a server default, table, index).
+- Two releases: dropping or renaming a column or table, adding `NOT NULL`, or changing a type. Release 1 stops reading and writing it; a later release runs the migration.
+- See [Database migrations](https://github.com/mylinden-tech/infra/blob/main/docs/linden-continuous-delivery.md#database-migrations) and mylinden-tech/infra#260.
