@@ -115,3 +115,10 @@ Dispatch is transactional-outbox style: a synchronous fast-path `.delay()` right
 - Soft-delete filter is applied globally via SQLAlchemy event listener; bypass with `.execution_options(skip_soft_delete_filter=True)`
 - A template whose layout was soft-deleted renders without the layout and logs a warning
 - Suppression is checked three times (accept, prepare, send). A recipient suppressed mid-flight ends as `suppressed`, not `failed`.
+
+## Database migrations
+
+- Migrations run only in the API's `start.sh`. During a deploy, old and new containers overlap (the API rolls; workers deploy separately), so every migration must work with the previous release's code.
+- One release: additive changes (nullable column or one with a server default, table, index).
+- Two releases: dropping or renaming a column or table, adding `NOT NULL`, or changing a type. Release 1 stops reading and writing it; a later release runs the migration.
+- See [Database migrations](https://github.com/mylinden-tech/infra/blob/main/docs/linden-continuous-delivery.md#database-migrations) and mylinden-tech/infra#260.
