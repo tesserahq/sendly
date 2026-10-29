@@ -12,4 +12,4 @@ jobs:
       checks: read
       contents: write
       pull-requests: write
-    uses: tesserahq/ci-workflows/.github/workflows/dependabot-auto-merge.yml@5c536748367e2b47331ff64706c5bb1efb01b608 # v0.1.0
+    uses: tesserahq/ci-workflows/.github/workflows/dependabot-auto-merge-python.yml@1ebfa8334590a46a49b8118a913e42d5cc40ea3f # Python gate (see https://github.com/tesserahq/ci-workflows/pull/1)
