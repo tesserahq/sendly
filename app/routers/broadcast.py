@@ -4,6 +4,7 @@ from typing import Annotated, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi_pagination import Page, Params
 from fastapi_pagination.ext.sqlalchemy import paginate
 from tessera_sdk.server.dependencies.authorization import authorize
@@ -126,8 +127,11 @@ async def get_broadcast(
 ) -> BroadcastStatusResponse:
     """Accept-time counts plus prepare/send progress for one batch, read
     from the denormalized prepared_count/finished columns."""
-    repo = BroadcastRepository(db)
-    batch = repo.get_batch_by_batch_id(batch_id)
+    # The Custos check must be awaited, so the synchronous queries around it
+    # run in the threadpool instead of on the event loop.
+    batch = await run_in_threadpool(
+        BroadcastRepository(db).get_batch_by_batch_id, batch_id
+    )
     if batch is None:
         raise HTTPException(status_code=404, detail="Broadcast batch not found")
 
@@ -159,11 +163,14 @@ async def list_broadcast_recipients(
     one exists), and first-open/first-click timestamps. Suppressed
     recipients and preparation failures remain visible with null
     email/engagement fields."""
-    repo = BroadcastRepository(db)
-    batch = repo.get_batch_by_batch_id(batch_id)
+    batch = await run_in_threadpool(
+        BroadcastRepository(db).get_batch_by_batch_id, batch_id
+    )
     if batch is None:
         raise HTTPException(status_code=404, detail="Broadcast batch not found")
 
     await _authorize_batch_read(batch, request)
 
-    return BroadcastRecipientResultsService(db).get_page(batch, params)
+    return await run_in_threadpool(
+        BroadcastRecipientResultsService(db).get_page, batch, params
+    )
