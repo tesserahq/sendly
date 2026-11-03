@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, Any
 from fastapi import APIRouter, Query, Request, HTTPException, Depends, status
+from fastapi.concurrency import run_in_threadpool
 
 from app.providers.registry import list_providers, get_provider
 from app.schemas.common import ListResponse
@@ -114,8 +115,11 @@ async def receive_delivery_events(
             detail=f"Invalid JSON payload: {str(e)}",
         )
 
-    # Execute command to process events
+    # Reading the body must be awaited; the command's database work runs in
+    # the threadpool instead of on the event loop.
     command = ProcessDeliveryEventsCommand(db)
-    result = command.execute(provider, body_bytes, payload, headers)
+    result = await run_in_threadpool(
+        command.execute, provider, body_bytes, payload, headers
+    )
 
     return result
