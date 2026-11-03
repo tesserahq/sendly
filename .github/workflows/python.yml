@@ -60,7 +60,24 @@ jobs:
           python-version: 3.12
       - name: Install dependencies
         run: |
-          pipx install poetry && poetry install
+          POETRY_VERSION=$(sed -n 's/.*POETRY_VERSION=\([0-9.]*\).*/\1/p' Dockerfile)
+          test -n "$POETRY_VERSION"
+          pipx install "poetry==$POETRY_VERSION" && poetry install
+      - name: Verify production dependency set imports cleanly
+        # Match the Dockerfile's Python image, Poetry version, and production
+        # dependency set so release-only import failures surface in CI.
+        run: |
+          POETRY_VERSION=$(sed -n 's/.*POETRY_VERSION=\([0-9.]*\).*/\1/p' Dockerfile)
+          PYTHON_IMAGE=$(sed -n 's/^FROM \(python:[^ ]*\) AS python-base/\1/p' Dockerfile)
+          test -n "$POETRY_VERSION"
+          test -n "$PYTHON_IMAGE"
+          # Keep writes out of the checkout: the container runs as root.
+          docker run --rm -v "$PWD":/code:ro -w /code "$PYTHON_IMAGE" bash -c "
+            apt-get update -qq && apt-get install -qq -y --no-install-recommends curl build-essential libcurl4-openssl-dev libssl-dev postgresql-client libffi-dev libpq-dev >/dev/null &&
+            pip install -q poetry==$POETRY_VERSION &&
+            POETRY_VIRTUALENVS_IN_PROJECT=false poetry install --only main --no-root &&
+            poetry run python -c 'import app.main'
+          "
       - name: Lint with ruff
         run: |
           # stop the build if there are Python syntax errors or undefined names
