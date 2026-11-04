@@ -26,7 +26,7 @@ fastapi = "^0.141.1"
 python-dotenv = "^1.0.0"
 sqlalchemy = "^2.1.6"
 asyncpg = "^0.32.0"
-gunicorn = "25.1.0"
+gunicorn = "26.2.0"
 alembic = "^1.20.1"
 faker = "40.44.0"
 pydantic = {extras = ["email"], version = "^2.14.2"}
