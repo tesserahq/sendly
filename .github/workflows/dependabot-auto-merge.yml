@@ -16,6 +16,6 @@ jobs:
       checks: read
       contents: write
       pull-requests: write
-    uses: tesserahq/ci-workflows/.github/workflows/dependabot-auto-merge.yml@a1bff14214318dc745b4707427acd63576a1da13 # v0.2.0
+    uses: tesserahq/ci-workflows/.github/workflows/dependabot-auto-merge.yml@a9831c8da88a47d135c8c071d2c08a238806d2ba # v0.3.0
     with:
       required-checks: build
