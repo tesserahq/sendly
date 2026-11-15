@@ -68,7 +68,7 @@ version = "^0.54.0"
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.2.0"
 httpx = "^0.28.0"  # Required by FastAPI TestClient
-pytest-asyncio = "^1.4.1"
+pytest-asyncio = "^1.5.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
