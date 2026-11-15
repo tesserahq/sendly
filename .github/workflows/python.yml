@@ -55,14 +55,22 @@ jobs:
             sleep 2
           done
       - name: Set up Python 3
+        id: setup-python
         uses: actions/setup-python@v6
         with:
-          python-version: 3.12
+          python-version: "3.14"
       - name: Install dependencies
+        env:
+          PYTHON_BIN: ${{ steps.setup-python.outputs.python-path }}
         run: |
           POETRY_VERSION=$(sed -n 's/.*POETRY_VERSION=\([0-9.]*\).*/\1/p' Dockerfile)
           test -n "$POETRY_VERSION"
-          pipx install "poetry==$POETRY_VERSION" && poetry install
+          # Install Poetry with the setup-python interpreter, not the runner
+          # image's default Python (which can differ from the Dockerfile's Python),
+          # and pin the project env to it.
+          pipx install --python "$PYTHON_BIN" "poetry==$POETRY_VERSION"
+          poetry env use "$PYTHON_BIN"
+          poetry install
       - name: Verify production dependency set imports cleanly
         # Match the Dockerfile's Python image, Poetry version, and production
         # dependency set so release-only import failures surface in CI.
