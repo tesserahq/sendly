@@ -31,7 +31,7 @@ alembic = "^1.20.1"
 faker = "40.54.0"
 pydantic = {extras = ["email"], version = "^2.14.3"}
 black = "^26.10.1"
-ruff = "0.17.4"
+ruff = "0.17.5"
 pydantic-settings = "^2.16.2"
 python-jose = "^3.3.0"
 
