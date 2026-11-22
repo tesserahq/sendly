@@ -1778,18 +1778,24 @@ testing = ["coverage", "pytest", "pytest-benchmark"]
 
 [[package]]
 name = "postmarker"
-version = "1.0"
+version = "3.0"
 description = "Python client library for Postmark API"
 optional = false
-python-versions = "*"
+python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "postmarker-1.0-py3-none-any.whl", hash = "sha256:0fa49f236c7193650896cbf31bbfac34043e352574c6c7e3e2ad2b954704f064"},
-    {file = "postmarker-1.0.tar.gz", hash = "sha256:e735303fdf8ede667a1c6e64a95a96e97f0dabbeca726d0ae1f066bdd799fe34"},
+    {file = "postmarker-3.0-py3-none-any.whl", hash = "sha256:29963a0920e6f63030ab06d2781e84db2622500cbcb42b50e780b3d188196ccf"},
+    {file = "postmarker-3.0.tar.gz", hash = "sha256:8dc9c5a752df2c38e44e00dca5f4566015f46a57b74ee70ceaeb61ea20906c97"},
 ]
 
 [package.dependencies]
 requests = ">=2.20.0"
+
+[package.extras]
+async = ["httpx2 (>=2.16)"]
+css-inline = ["css-inline (>=0.24)"]
+docs = ["mkdocstrings[python]", "pymdown-extensions", "ruff", "zensical (>=0.1.1,<0.2)"]
+tests = ["coverage[toml] (>=7.2)", "css-inline (>=0.24)", "httpx2 (>=2.16)", "pytest (>=8)", "pytest-django", "pytest-recording (>=0.14)", "tornado"]
 
 [[package]]
 name = "prometheus-client"
@@ -3340,4 +3346,4 @@ dev = ["pytest", "setuptools"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.15"
-content-hash = "46497a1e225933acb52269cf7617c033cfab715c11a28f4bb733d77275dc68c2"
+content-hash = "dface9def077bb27bd6bca4b54748c06c1e7e030f894820690af818c5776c605"
